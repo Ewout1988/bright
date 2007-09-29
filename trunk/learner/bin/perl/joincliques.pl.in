@@ -1,0 +1,119 @@
+#!/usr/bin/perl -w
+
+if(3 != @ARGV) {
+    print STDERR "Usage: $0 vdfile clqfile jtreefile\n";
+    exit;
+}
+
+# READ VDFILE TO GET VALUE COUNTS
+
+open(V,"<$ARGV[0]") or die "iik $ARGV[0] $!\n";
+while(<V>){     
+    push @vc, scalar tr/\t/\t/;
+}
+close(V);
+
+
+# READ CLIQUES AND CALCULATE CLIQUE WEIGHTS 
+
+open(C,"<$ARGV[1]");
+while(<C>){
+    chop;
+    my @clq = split(/ /,$_);
+    push @clique, [@clq];
+    my $w = 1;
+    grep {$w *= $vc[$_]} @clq;
+    push @weight, $w;
+}
+close(C);
+
+
+# GENERATE SEPSETS AND THEIR COSTS
+
+for($ci1=0;$ci1<@clique;++$ci1) {
+    $clq1 = $clique[$ci1];
+    for($ci2=$ci1+1;$ci2<@clique;++$ci2) {
+	my %clq2; grep {$clq2{$_} = 1} @{$clique[$ci2]};
+	my @sepcand = grep {$clq2{$_}} @{$clq1};
+	my $mass = @sepcand;
+	my $cost = $weight[$ci1] + $weight[$ci2];
+	$sepsets{"$ci1 $ci2"} = [@sepcand];
+	$masses{"$ci1 $ci2"} = $mass;
+	$costs{"$ci1 $ci2"} = $cost;
+    }
+}
+
+# SORT SEPESTS
+
+sub crit(){
+    ($key1, $key2) = @_;
+    if($masses{$key1}<$masses{$key2}) {
+	return -1;
+    } elsif ($masses{$key1}>$masses{$key2}) {
+	return 1;
+    } else {
+	if($costs{$key1}>$costs{$key2}) {
+	    return -1;
+	} elsif ($costs{$key1}<$costs{$key2}) {
+	    return 1;
+	} else {
+	    return 0;
+	}
+    }
+}
+
+@sepsort = sort {&crit($a,$b)} (keys %sepsets);
+
+#for $sepsetkey (@sepsort) {
+#    print "$sepsetkey: @{$sepsets{$sepsetkey}} m=$masses{$sepsetkey} c=$costs{$sepsetkey}\n";
+#}
+
+# JOIN CLIQUES BY SEPESETS
+
+@clqixtree=(0..$#clique);
+$sepsetcount=0;
+while($sepsetcount<$#clique){
+
+    if(!@sepsort) {
+	print STDERR "Internal error: No sepsets left($sepsetcount)\n";
+	exit 1;
+    }
+
+    # pop sepset
+    ($clqix1, $clqix2) = split(/ /,pop @sepsort);
+    
+    # check if already connected
+
+    my $tree1name = $clqix1;
+    while ($tree1name != $clqixtree[$tree1name]) {
+	$tree1name = $clqixtree[$tree1name];
+    }
+
+    my $tree2name = $clqix2;
+    while ($tree2name != $clqixtree[$tree2name]) {
+	$tree2name = $clqixtree[$tree2name];
+    }
+
+    if($tree1name != $tree2name) {
+	$jointree{"$clqix1 $clqix2"} = 1; 
+	$clqixtree[$tree1name] = $clqixtree[$tree2name];
+	++$sepsetcount;
+	# print STDERR "Joining clusters (@{$clique[$clqix1]}) and (@{$clique[$clqix2]}).\n"
+    }
+}
+
+#for $arc (keys %jointree) {
+#    ($clqix1, $clqix2) = split(/ /,$arc);
+#    
+#    print "@{$clique[$clqix1]}\n";
+#    print "@{$sepsets{$arc}}\n";
+#    print "@{$clique[$clqix2]}\n-\n";
+#}
+
+# PRINT TREE
+
+open(J,">$ARGV[2]");
+print J join("\n",keys %jointree),"\n";
+close(J);
+
+

@@ -1,0 +1,25 @@
+AC_INIT(bayway_ssg, 1.05)
+AC_CONFIG_AUX_DIR(config)
+AM_INIT_AUTOMAKE(1.7.9)
+AC_PROG_CC
+AC_PROG_INSTALL
+AC_PROG_LIBTOOL
+AC_OUTPUT(
+Makefile 
+bin/Makefile
+bin/perl/Makefile
+bin/perl/sst2tht.pl
+bin/perl/sst2dpa.pl
+bin/perl/str2pla.pl
+bin/perl/str2ps.pl
+bin/perl/str_n_arcw2ps.pl
+bin/perl/moralize.pl
+bin/perl/triangulate.pl
+bin/perl/joincliques.pl
+bin/perl/quantify.pl
+bin/python/Makefile
+bin/python/hugo.py
+src/Makefile 
+src/common/Makefile 
+data/Makefile
+)

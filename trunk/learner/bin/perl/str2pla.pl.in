@@ -1,0 +1,60 @@
+#!/usr/bin/perl -w
+
+$grapher = "dot";
+
+if(3 != @ARGV) {
+	print STDERR "Usage: $0 vdfile strfile plafile\n";
+	exit;
+}
+
+# READ VARIABLE NAMES
+
+open(V,"<$ARGV[0]") or die "iik $ARGV[0] $!\n";
+while(<V>){
+	my ($varname, @valnames) = split(/\t/);
+	push @varnames, $varname;	
+} 
+close(V);
+
+
+# READ STRUCT
+
+open(G,"<$ARGV[1]") or die "iik $ARGV[1] $!\n"; 
+$nodecount = <G>; 
+chop $nodecount; 
+for($i=0; $i<$nodecount; ++$i){
+    ($childcount[$i], $parentcount[$i], @rest) = split(/\s+/, <G>);
+     $parent[$i] = ($parentcount[$i]) ? [@rest] : [];
+     for $p (@{$parent[$i]}) { $arcs{"$p $i"} = 1 }
+     (push @loner, $i) if($childcount[$i] == 0 and $parentcount[$i] == 0); 
+}
+close(G);
+undef @loner;
+
+$gfile = "/tmp/gr.$$";
+
+open(G,">$gfile");
+
+print G join("\n\t",
+"digraph STR {",
+    "nodedesep=.2;", "ranksep=.8;", "margin=\"1.0,1.0\";", "clusterrank=none;",
+    "node [height=.4,width=1.1 style=filled,fontsize=12]",
+    "edge [color=darksalmon];"),"\n";
+
+for($i=0; $i<$nodecount; ++$i){
+	print G "\t$i [label=\"$varnames[$i]\"];\n";
+}
+
+for $a (keys %arcs){
+    my ($c1,$c2) = split(/ /,$a);
+    print G "\t$c1 -> $c2;\n";
+}
+
+print G "}\n";
+
+close(G);
+
+system("$grapher $gfile | $grapher -Tplain -o $ARGV[2]");
+
+unlink $gfile;
+

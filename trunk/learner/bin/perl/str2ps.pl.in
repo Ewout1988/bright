@@ -1,0 +1,61 @@
+#!/usr/bin/perl -w
+
+use Getopt::Std;
+
+$grapher = "dot";
+
+if(@ARGV < 2 or @ARGV > 5 or not getopts('ln:')) {
+	print STDERR "Usage: $0 [options] strfile psfile\n";
+	print STDERR "Options:\n";
+	print STDERR "  -n vdfile  : prints names of variables\n";
+	print STDERR "  -l         : prints loners too\n";
+	exit;
+}
+
+
+if(defined $opt_n) { # READ VARIABLE NAMES
+    open(V,"<$opt_n") or die "iik $opt_n $!\n";
+    while(<V>){
+	my ($varname, @valnames) = split(/\t/);
+	push @varnames, $varname;	
+    } 
+    close(V);
+}
+
+# READ STRUCT
+
+open(G,"<$ARGV[0]") or die "iik $ARGV[0] $!\n"; 
+$nodecount = <G>; 
+chop $nodecount; 
+for($i=0; $i<$nodecount; ++$i){
+    ($childcount[$i], $parentcount[$i], @rest) = split(/\s+/, <G>);
+     $parent[$i] = ($parentcount[$i]) ? [@rest] : [];
+     for $p (@{$parent[$i]}) { $arcs{"$p $i"} = 1 }
+     $loner[$i] = 1 if($childcount[$i] == 0 and $parentcount[$i] == 0); 
+}
+close(G);
+
+$gfile = "/tmp/gr.$$";
+
+open(G,">$gfile");
+
+print G "digraph STR {\n";
+
+for($i=0; $i<$nodecount; ++$i){
+    next if ! $opt_l and defined $loner[$i];
+    my $label = (defined $varnames[$i]) ? $varnames[$i] : $i;
+    print G qq/\t$i [label="$label"];\n/;
+}
+
+for $a (keys %arcs){
+    my ($c1,$c2) = split(/ /,$a);
+    print G "\t$c1 -> $c2;\n";
+}
+
+print G "}\n";
+
+close(G);
+
+system("$grapher -Tps -o $ARGV[1] $gfile");
+unlink $gfile;
+undef $opt_l; # trick to get the stupid warning away

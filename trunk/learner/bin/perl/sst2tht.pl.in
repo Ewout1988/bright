@@ -1,0 +1,26 @@
+#!/usr/bin/perl -w
+
+if(@ARGV != 3) {
+    print STDERR "Usage: $0 sstfile ess thtfile\n";
+    exit;
+}
+
+($sstfile, $ess, $thtfile) = @ARGV;
+
+open(SSF,"<$sstfile");
+open(THT,">$thtfile");
+while(<SSF>){
+    chop;
+    $pcc=$_;
+    print THT "$pcc\n";
+    @thi=();
+    for($i=0; $i<$pcc; ++$i){
+	@r = split(/ /,scalar(<SSF>));
+	$thsum=0;
+	@s = map {$thsum += $x = $_ + $ess/($pcc*@r); $x} @r;
+	@thi=map {$_/$thsum} @s;
+	print THT "@thi\n";
+    }
+}
+close(THT);
+close(SSF);

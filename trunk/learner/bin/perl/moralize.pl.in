@@ -1,0 +1,62 @@
+#!/usr/bin/perl -w
+
+# LOAD THE GRAPH
+
+if(2 != @ARGV) {
+    print STDERR "Usage: $0 structfile moralfile\n";
+    exit;
+}
+
+open(G,"<$ARGV[0]") or die "iik $ARGV[0] $!\n";
+$nodecount = <G>;
+chop $nodecount;
+for($i=0; $i<$nodecount; ++$i){
+    ($childcount[$i], $parentcount[$i], @rest) = split(/\s+/, <G>);
+    $parent[$i] = ($parentcount[$i]) ? [@rest] : [];
+    for $p (@{$parent[$i]}) { $arcs{"$p $i"} = 1 }
+    (push @loner, $i) if($childcount[$i] == 0 and $parentcount[$i] == 0);
+}
+close(G);
+undef @loner;
+
+# BUILD MORAL GRAPH
+
+# first copy the graph
+
+my %moral_arcs;
+my $e;
+for $e (keys %arcs) {
+    my ($p,$c) = split(/ /,$e);
+    if($p < $c) {
+        $moral_arcs{"$p $c"} = 1;
+    } else {
+        $moral_arcs{"$c $p"} = 1;
+    }
+}
+ 
+# and then add the moral arcs
+
+my $i;
+for($i=0; $i<$nodecount; ++$i){
+    my $p1;
+    for($p1=0; $p1<@{$parent[$i]}; ++$p1) {
+	my $p2;
+        for($p2=$p1+1; $p2<@{$parent[$i]}; ++$p2) {
+            my ($pa1, $pa2) = ($parent[$i][$p1], $parent[$i][$p2]);
+            if($pa1 < $pa2) {
+                $moral_arcs{"$pa1 $pa2"} = 1;
+            } else {
+                $moral_arcs{"$pa2 $pa1"} = 1;
+	    }
+	}
+    }
+}
+
+
+# PRINT THE MORAL GRAPH
+open(M,">$ARGV[1]");
+my $k;
+for $k (keys %moral_arcs) {
+    print M "$k\n";
+}
+close(M);
