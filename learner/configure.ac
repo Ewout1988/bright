@@ -21,5 +21,4 @@ bin/python/Makefile
 bin/python/hugo.py
 src/Makefile 
 src/common/Makefile 
-data/Makefile
 )
