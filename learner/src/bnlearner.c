@@ -12,6 +12,10 @@
 #include "bane.h"
 #include "node.h"
 
+#ifdef WIN32
+#include "drand48.c"
+#endif
+
 int usr1_set;
 int usr2_set;
 int alrm_set;
@@ -473,6 +477,7 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
     double new_score;
 
     for (i = 0; i < (calibrating ? 1000 : iterations); ++i) {
+
       /*
        * take a step
        */
@@ -611,7 +616,7 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
     } else {
       T /= mu_T;
 
-      if ((acceptratio < 0.10) && (acceptratio2 < 0.005)) {
+      if ((acceptratio < 0.20) && (acceptratio2 < 0.005)) {
 	++Titerations;
 	T = T0;
 	write_report_n_structure(stg, stp, reportfilename, structfilename,
