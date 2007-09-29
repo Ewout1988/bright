@@ -10,31 +10,31 @@ int bane_suggest_ranadd_from(bane* bn, node* from, arc* ar, int maxtblsize) {
   node* to = NULL;
   int t,i;
 
-    int target_count = /* number of possible targets */
-      bn->nodecount - from->ancestorcount - from->childcount - 1;
-    if(target_count == 0) return 0;
+  int target_count = /* number of possible targets */
+    bn->nodecount - from->ancestorcount - from->childcount - 1;
+  if(target_count == 0) return 0;
 
-    t = rand() % target_count;    
-    i = 0; /* count upto t */
-    for(to_id=0; ; ++to_id){
-      if((to_id == from->id)                    /* self loop */
-	 || (IS_CHILD(from->id, to_id, bn->pmx)) /* arc to child */ 
-	 || (IS_ANCESTOR_OF(from, to_id)))      /* arc to ancestor */
-	continue;
-      if(i == t) break;
-      ++i;
-    }
-    
-    to = bn->nodes + to_id;
+  t = rand() % target_count;    
+  i = 0; /* count upto t */
+  for(to_id=0; ; ++to_id){
+    if((to_id == from->id)                    /* self loop */
+       || (IS_CHILD(from->id, to_id, bn->pmx)) /* arc to child */ 
+       || (IS_ANCESTOR_OF(from, to_id)))      /* arc to ancestor */
+      continue;
+    if(i == t) break;
+    ++i;
+  }
 
-    if(to->pcc * from->valcount * to->valcount <= maxtblsize){  
-      /* Complexity constraint satisfied */
-      ar->to = to_id;
-      ar->from = from->id;
-      return 1;
-    }
-    
-    return 0;
+  to = bn->nodes + to_id;
+
+  if(to->pcc * from->valcount * to->valcount <= maxtblsize){  
+    /* Complexity constraint satisfied */
+    ar->to = to_id;
+    ar->from = from->id;
+    return 1;
+  }
+
+  return 0;
 }
 
 int bane_add_random_arc_from(bane* bn, node* from, arc* ar, int maxtblsize) {
