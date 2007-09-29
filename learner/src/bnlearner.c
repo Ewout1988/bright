@@ -122,26 +122,6 @@ void write_report_n_structure(search_stats* st, search_stats* stp,
 
 }
 
-
-
-int better_to_restart(data* dt, search_stats* st){
-  int res = 0;
-  long vain = st->tn - st->tn_when_best;
-
-  if( (st->tn ==  0) 
-      || ((1.0 * vain / st->tn > 0.5)  && (st->t > (unsigned) 10*dt->m))){
-    /* fprintf(stderr,"rs1:%lu %ld\n", st->t, vain); */
-    res = 1;
-  }
-
-  if(((long) st->t > 100 * dt->m) && (st->hit_rate_rwa > 0.95)){
-    /* fprintf(stderr,"rs2: %f\n", st->hit_rate_rwa); */
-    res = 1;
-  }
-  return res;
-}
-
-
 typedef int (*greedy_change)(bane*, arc*, int);
 typedef void (*greedy_unchange)(bane*, arc*);
 
@@ -188,104 +168,6 @@ void remove_bad_arcs(data* dt, double ess,
 	  }
 	}
       }
-    }
-  }
-}
-
-static
-void t_times_greedy_step(data* dt, double ess, int t_limit, int maxtblsize,
-			 arc* ar, double* scoreboard, score_hashtable* sht,
-			 search_stats* stl, search_stats* stg){
-
-  int t; 
-  bane* bn = stl->beba;
-
-  greedy_change grch[3];
-  greedy_unchange gruch[3];
-  greedy_unchange grcmpl[3];
-
-  grch[0] = bane_add_random_arc;
-  grch[1] = bane_del_random_arc;
-  grch[2] = bane_rev_random_arc;
-
-  grcmpl[0] = bane_add_arc_complete;
-  grcmpl[1] = bane_del_arc_complete;
-  grcmpl[2] = bane_rev_arc_complete;
-
-  gruch[0] = bane_del_arc;
-  gruch[1] = bane_add_arc;
-  gruch[2] = bane_rev_arc;
-
-  for(t = 0; (t<t_limit) && (!usr1_set) && (!usr2_set) &&(!alrm_set); ++t){
-    int ch = rand()%3;
-    double new_score;
-    double from_score = 0;
-    double to_score = 0;
-
-    //fprintf(stderr, "%d", ch);
-
-    int hthit;
-
-    if(!grch[ch](bn,ar,maxtblsize)) continue; /* if CHANGE not succeeded */
-
-    hthit = 0;
-    if(score_hashtable_get(sht, bn->pmx->mx, &new_score)) {
-      hthit = 1;
-    } else {
-      bane_gather_ss_for_i(bn, dt, ar->to); /* to needs always work */
-      to_score = bane_get_score_for_i(bn->nodes + ar->to, ess);	
-      from_score = scoreboard[ar->from]; /* cheap default for from */
-      if(ch==2) { /* rev - from needs to be calculated */
-	bane_gather_ss_for_i(bn, dt, ar->from);
-	from_score = bane_get_score_for_i(bn->nodes + ar->from, ess);
-      }
-      new_score = stl->best_score +  
-	from_score + to_score 
-      - scoreboard[ar->from] - scoreboard[ar->to];
-      score_hashtable_put(sht, bn->pmx->mx, new_score);
-      
-      ++ stl->tn;
-      ++ stg->tn;
-    }
-
-    stl->hit_rate_rwa += 0.01 * (hthit - stl->hit_rate_rwa);
-
-    ++ stl->t;
-    ++ stg->t;
-
-    if(new_score > stl->best_score) { /* commit */
-      grcmpl[ch](bn, ar);
-      //fprintf(stderr, ".");
-      //double check;
-
-      /* fprintf(stderr,"%d %f\n",ch,new_score); */
-      stl->best_score = new_score;
-      stl->tn_when_best = stl->tn;
-      if(hthit){ /* We need to update score board */ 
-	bane_gather_ss_for_i(bn, dt, ar->to); /* to needs always work */
-	to_score = bane_get_score_for_i(bn->nodes + ar->to, ess);	
-	from_score = scoreboard[ar->from]; /* cheap default for from */
-	if(ch==2) { /* rev - from needs to be calculated */
-	  bane_gather_ss_for_i(bn, dt, ar->from);
-	  from_score = bane_get_score_for_i(bn->nodes + ar->from, ess);
-	}
-      }
-      scoreboard[ar->from] = from_score;
-      scoreboard[ar->to] = to_score;
-
-      //bane_gather_full_ss(bn, dt);
-      //check = bane_get_score(bn, ess, scoreboard);
-      //if (fabsl(stl->best_score - check) > 1E-5) {
-      //  fprintf(stderr, "WRONG (%g)!", stl->best_score - check);
-      //}
-
-      if(new_score > stg->best_score) {
-	stg->best_score = new_score;
-	stg->tn_when_best = stg->tn;
-	bane_assign(stg->beba, bn);
-      }
-    } else { /* retract */
-      gruch[ch](bn, ar);
     }
   }
 }
@@ -438,8 +320,8 @@ static double compute_score(bane *bn, int ch, arc *ar, arc *del_ar,
 }
 
 void search(format *fmt, data *dt, double ess, int maxtblsize,
-	    char *reportfilename, char *structfilename, int salearner,
-	    double T0, double mu_T, int iterations) {
+	    char *reportfilename, char *structfilename,
+	    int iterations, int coolings) {
   search_stats* stg = NULL; /* global search stats */
   search_stats* stl; /* search stats for current round - local*/
   search_stats* stp; /* search stats at previous report */ 
@@ -456,6 +338,9 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 
   int* roots;
   int rootpos;
+
+  double T0, T;
+  double mu_T = 1.01; 
 
   MECALL(ar, 1, arc);
 
@@ -515,7 +400,6 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
     }
   }
 
-
   if (!stg) {
     stg = search_stats_create(bn);
     stg->best_score = 0;
@@ -551,276 +435,195 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
   stp->tn = -1;
   stp->best_score = stg->best_score;
 
-  if (salearner) {
-    double T = T0;
-    int Titerations = 0;
+  int Titerations = 0;
 
-    arc* del_ar;
-    arc* add_ar;
+  arc* del_ar;
+  arc* add_ar;
 
-    greedy_change sach[3];
-    greedy_unchange sauch[3];
-    greedy_unchange sacmpl[3];
+  greedy_change sach[3];
+  greedy_unchange sauch[3];
+  greedy_unchange sacmpl[3];
 
-    sach[0] = bane_add_random_arc;
-    sach[1] = bane_del_random_arc;
-    sach[2] = bane_rev_random_arc;
+  sach[0] = bane_add_random_arc;
+  sach[1] = bane_del_random_arc;
+  sach[2] = bane_rev_random_arc;
 
-    sacmpl[0] = bane_add_arc_complete;
-    sacmpl[1] = bane_del_arc_complete;
-    sacmpl[2] = bane_rev_arc_complete;
+  sacmpl[0] = bane_add_arc_complete;
+  sacmpl[1] = bane_del_arc_complete;
+  sacmpl[2] = bane_rev_arc_complete;
 
-    sauch[0] = bane_del_arc;
-    sauch[1] = bane_add_arc;
-    sauch[2] = bane_rev_arc;
+  sauch[0] = bane_del_arc;
+  sauch[1] = bane_add_arc;
+  sauch[2] = bane_rev_arc;
 
-    MECALL(del_ar, 1, arc);
-    MECALL(add_ar, 1, arc);
+  MECALL(del_ar, 1, arc);
+  MECALL(add_ar, 1, arc);
 
-    int calibrating = 0;
+  int calibrating = 1;
 
-    if (T == 0) {
-      calibrating = 1;
-      fprintf(stderr, "Calibrating T0\n");
-      T = 1; // start from 1, and go up until accept ratio > 0.8
-    }
+  T = 1; // start from 1, and go up until accept ratio > 0.8
    
-    while (!usr2_set) {
-      int n_accepts = 0;
-      int n_rejects = 0;
-      int n_eless = 0;
+  while (!usr2_set) {
+    int n_accepts = 0;
+    int n_rejects = 0;
+    int n_eless = 0;
   
-      int i;
+    int i;
 
-      double new_score;
+    double new_score;
 
-      for (i = 0; i < (calibrating ? 1000 : iterations); ++i) {
-	/*
-	 * take a step
-	 */
-	//fprintf(stderr, ".");
-	bane *bn = stl->beba;
+    for (i = 0; i < (calibrating ? 1000 : iterations); ++i) {
+      /*
+       * take a step
+       */
+      bane *bn = stl->beba;
 
-	int ch;
-	int hthit;
-	int accept;
-	double from_score = 0;
-	double to_score = 0;
+      int ch;
+      int hthit;
+      int accept;
+      double from_score = 0;
+      double to_score = 0;
 
-	for (;;) {
-	  ch = rand() % 5;
+      for (;;) {
+	ch = rand() % 5;
 
-	  //fprintf(stderr, "%d", ch);
-
-	  if (ch < 3) {
-	    if (sach[ch](bn, ar, maxtblsize))
-	      break;
-	  } else
-	    if (ch == 3) {
-	      if (bane_repl_random_to_arc(bn, del_ar, add_ar, maxtblsize))
-		break;
-	    } else {
-	      if (bane_repl_random_from_arc(bn, del_ar, add_ar, maxtblsize))
-		break;
-	    }
-	}
-
-	//fprintf(stderr, "!");
-
-	hthit = 0;
-
-	if (score_hashtable_get(sht, bn->pmx->mx, &new_score)) {
-	  hthit = 1;
-	} else {
-	  new_score = compute_score(bn, ch, ar, del_ar,
-				    add_ar, dt, scoreboard,
-				    sht, &from_score, &to_score,
-				    ess, stl->best_score);
-	  //fprintf(stderr, "N");
-	  if (ch < 3) {
-	    ++ stl->tn;
-	    ++ stg->tn;
-	  } else {
-	    stl->tn += 2;
-	    stg->tn += 2;
-	  }
-	}
-
-	/*
-	 * new_E: new_score; best_E: stg->score
-	 */
-	accept = new_score > stl->best_score;
-
-	if (accept) {
-	  //if (ch == 4) fprintf(stderr, "f");
-	  ++n_eless;
+	if (ch < 3) {
+	  if (sach[ch](bn, ar, maxtblsize))
+	    break;
 	} else
-	  if (drand48()
-	      < exp (-(stl->best_score - new_score) / T)) {
-	    accept = 1;
-	    ++n_accepts;
-	    //if (ch == 4) fprintf(stderr, "g");
+	  if (ch == 3) {
+	    if (bane_repl_random_to_arc(bn, del_ar, add_ar, maxtblsize))
+	      break;
 	  } else {
-	    ++n_rejects;
-	    //fprintf(stderr, "r");
+	    if (bane_repl_random_from_arc(bn, del_ar, add_ar, maxtblsize))
+	      break;
 	  }
+      }
 
-	if (accept) {
-	  double score_check = stl->best_score;
-	  double check;
-	  stl->best_score = new_score;
-	  stl->beba = bn;
+      hthit = 0;
 
-	  //fprintf(stderr, "a");
-
-	  if (hthit) {
-	    compute_score(bn, ch, ar, del_ar, add_ar, dt, scoreboard, NULL,
-			  &from_score, &to_score, ess, score_check);
-	  }
-
-	  if (ch < 3)
-	    sacmpl[ch](bn, ar);
-	  else {
-	    bane_del_arc(bn, add_ar);
-	    bane_del_arc_complete(bn, del_ar);
-	    bane_add_arc(bn, add_ar);
-	    bane_add_arc_complete(bn, add_ar);
-	  }
-
-	  scoreboard[ar->from] = from_score;
-	  scoreboard[ar->to] = to_score;
-
-	  /*
-	    bane_gather_full_ss(stl->beba, dt);
-	    check = bane_get_score_param_costs(stl->beba, ess, scoreboard);
-	    if (fabsl(stl->best_score - check) > 1E-5) {
-	    fprintf(stderr, "WRONG! (%g)", stl->best_score - check);
-	    stl->best_score = check;
-	    }
-	  */
-
-	  if (new_score > stg->best_score) {
-	    stg->best_score = new_score;
-	    stg->tn_when_best = stg->tn;
-	    bane_assign(stg->beba, bn);
-	    fprintf(stderr, "N");
-	  } else if (new_score == stg->best_score) {
-	    fprintf(stderr, "h");
-	  }
+      if (score_hashtable_get(sht, bn->pmx->mx, &new_score)) {
+	hthit = 1;
+      } else {
+	new_score = compute_score(bn, ch, ar, del_ar,
+				  add_ar, dt, scoreboard,
+				  sht, &from_score, &to_score,
+				  ess, stl->best_score);
+	if (ch < 3) {
+	  ++ stl->tn;
+	  ++ stg->tn;
 	} else {
-	  if (ch < 3)
-	    sauch[ch](bn, ar);
-	  else
-	    bane_repl_arc(bn, add_ar, del_ar);
-	}
-
-	if(usr1_set || alrm_set) {
-	  usr1_set = 0;
-	  if(alrm_set) {
-	    remove_bad_arcs(dt, ess, ar, scoreboard, sht, stg);
-	  }
-	  write_report_n_structure(stg, stp, reportfilename, structfilename,
-				   Titerations);
-	  if(alrm_set){
-	    usr2_set = 1;
-	  }
+	  stl->tn += 2;
+	  stg->tn += 2;
 	}
       }
 
-      double acceptratio
-	= (double)(n_accepts + n_eless)/(n_accepts + n_eless + n_rejects);
-      double acceptratio2
-	= (double)(n_eless)/(n_accepts + n_eless + n_rejects);
+      /*
+       * new_E: new_score; best_E: stg->score
+       */
+      accept = new_score > stl->best_score;
 
-      if (calibrating) {
-	if (acceptratio >= 0.6) {
-	  // between 40 and 90: http://dx.doi.org/10.1016/S0045-7949(03)00214-1
-	  calibrating = 0;
-	  T0 = T;
-	  fprintf(stderr, "Calibration done\n");
+      if (accept) {
+	++n_eless;
+      } else
+	if (drand48()
+	    < exp (-(stl->best_score - new_score) / T)) {
+	  accept = 1;
+	  ++n_accepts;
 	} else {
-	  T *= 1.1;
+	  ++n_rejects;
+	}
+
+      if (accept) {
+	double score_check = stl->best_score;
+	double check;
+	stl->best_score = new_score;
+	stl->beba = bn;
+
+	if (hthit) {
+	  compute_score(bn, ch, ar, del_ar, add_ar, dt, scoreboard, NULL,
+			&from_score, &to_score, ess, score_check);
+	}
+
+	if (ch < 3)
+	  sacmpl[ch](bn, ar);
+	else {
+	  bane_del_arc(bn, add_ar);
+	  bane_del_arc_complete(bn, del_ar);
+	  bane_add_arc(bn, add_ar);
+	  bane_add_arc_complete(bn, add_ar);
+	}
+
+	scoreboard[ar->from] = from_score;
+	scoreboard[ar->to] = to_score;
+
+	/*
+	  bane_gather_full_ss(stl->beba, dt);
+	  check = bane_get_score_param_costs(stl->beba, ess, scoreboard);
+	  if (fabsl(stl->best_score - check) > 1E-5) {
+	  fprintf(stderr, "WRONG! (%g)", stl->best_score - check);
+	  stl->best_score = check;
+	  }
+	*/
+
+	if (new_score > stg->best_score) {
+	  stg->best_score = new_score;
+	  stg->tn_when_best = stg->tn;
+	  bane_assign(stg->beba, bn);
+	  fprintf(stderr, "N");
+	} else if (new_score == stg->best_score) {
+	  fprintf(stderr, "h");
 	}
       } else {
-	T /= mu_T;
-
-	if ((acceptratio < 0.10) && (acceptratio2 < 0.005)) {
-	  ++Titerations;
-	  T = T0;
-	  write_report_n_structure(stg, stp, reportfilename, structfilename,
-				   Titerations);
-
-	  if (Titerations == 3)
-	    exit(0);
-	}
+	if (ch < 3)
+	  sauch[ch](bn, ar);
+	else
+	  bane_repl_arc(bn, add_ar, del_ar);
       }
 
-      fprintf(stderr, "T: %g score: %g (accept-ratio: %g, %g)\n", T,
-	      new_score, acceptratio, acceptratio2);
-    }
-  } else {
-    while(!usr2_set){
-      t_times_greedy_step(dt, ess, 100, maxtblsize, ar, scoreboard, sht, stl, stg);
-      if(usr1_set || alrm_set) {
+      if (usr1_set || alrm_set) {
 	usr1_set = 0;
-	if(alrm_set) {
+	if (alrm_set) {
 	  remove_bad_arcs(dt, ess, ar, scoreboard, sht, stg);
 	}
-	write_report_n_structure(stg, stp, reportfilename, structfilename, 0);
-	if(alrm_set){
+	write_report_n_structure(stg, stp, reportfilename, structfilename,
+				 Titerations);
+	if (alrm_set) {
 	  usr2_set = 1;
 	}
       }
+    }
 
-      if (better_to_restart(dt,stl)){
-	if (rand() % fmt->dim < (fmt->dim - rootpos)) {
-	  fprintf(stderr,"Trying root number %d\n",roots[rootpos]);
-	  int x;
-	  bn = bane_copy(bnf);
-	  for(x=roots[rootpos]; bn->nodes[x].parentcount > 0; x=ar->from) {
-	    ar->from = bn->nodes[x].first_parent;
-	    ar->to = x;
-	    bane_rev_arc(bn,ar);
-	    bane_rev_arc_complete(bn,ar);
-	  }
-	  ++rootpos;
-	} else {
-	  int t;
-	  if ((rand() % 3) == 0) {
-	    /* take best one and mutilate it */
-	    fprintf(stderr, "Mutilating best one\n");
-	    bn = bane_copy(stg->beba);
-	  } else {
-	    int n;
-	    parent_matrix* smx;
-	    /* Take some good one out of hashtable and mutilate it */
-	    
-	    n = 1 + rand() % (1 + (int) (sht->keycount * 0.01));
-	    fprintf(stderr, "Mutilating %d\n", n);
-	    smx = parent_matrix_create_wrap(stl->beba->nodecount,
-					    score_hashtable_get_nth_key(sht,n));
-	    bn = bane_create_from_pmx(fmt,smx);
-	    parent_matrix_free(smx);
-	  }
-	  
-	  for(t=0; t<bn->nodecount / 3; ++t) {
-	    bane_del_random_arc(bn,ar,maxtblsize);
-	    bane_del_arc_complete(bn, ar);
-	  } 
-	}
-	
+    double acceptratio
+      = (double)(n_accepts + n_eless)/(n_accepts + n_eless + n_rejects);
+    double acceptratio2
+      = (double)(n_eless)/(n_accepts + n_eless + n_rejects);
 
-	bane_assign(stl->beba, bn);
-	bane_free(bn);
+    if (calibrating) {
+      if (acceptratio >= 0.6) {
+	// between 40 and 90: http://dx.doi.org/10.1016/S0045-7949(03)00214-1
+	calibrating = 0;
+	T0 = T;
+	fprintf(stderr, "Calibration done\n");
+      } else {
+	T *= 1.1;
+      }
+    } else {
+      T /= mu_T;
 
-	bane_gather_full_ss(stl->beba, dt);
-	stl->t = 0;
-	stl->tn = 0;
-	stl->best_score = bane_get_score(stl->beba, ess, scoreboard);
-	stl->tn_when_best = 0;
-	stl->hit_rate_rwa = 0;
+      if ((acceptratio < 0.10) && (acceptratio2 < 0.005)) {
+	++Titerations;
+	T = T0;
+	write_report_n_structure(stg, stp, reportfilename, structfilename,
+				 Titerations);
+
+	if (Titerations == coolings)
+	  exit(0);
       }
     }
+
+    fprintf(stderr, "T: %g score: %g (accept-ratio: %g, %g)\n", T,
+	    new_score, acceptratio, acceptratio2);
   }
 
   search_stats_free(stl);
@@ -837,40 +640,17 @@ int main(int argc, char* argv[]){
   data* dt;
   format* fmt;
   double ess;
-  int searchtime;
   FILE* fp;
   double T0;
   double mu_T;
-  int iterations;
-  int salearner = strstr(argv[0], "bnsalearner") != NULL;
-  int saautolearner = strstr(argv[0], "bnsaautolearner") != NULL;
+  int iterations, coolings;
 
-  if (salearner) {
-    if (argc != 13) {
-      fprintf(stderr,
-	      "Usage: %s vdfile datafile datacount ess "
-	      "reportfile structfile searchtime(<0 forever) "
-	      "T0 mu_T iterations param_cost pidfile\n", 
-	      argv[0]);
-      exit(-1);
-    }
-  } else if (saautolearner) {
-    if (argc != 11) {
-      fprintf(stderr,
-	      "Usage: %s vdfile datafile datacount ess "
-	      "reportfile structfile searchtime(<0 forever) "
-	      "iterations param_cost pidfile\n", 
-	      argv[0]);
-      exit(-1);
-    }
-  } else {
-    if (argc != 9) {
-      fprintf(stderr,
-	      "Usage: %s vdfile datafile datacount ess "
-	      "reportfile structfile searchtime(<0 forever) pidfile\n", 
-	      argv[0]);
-      exit(-1);
-    }
+  if (argc != 11) {
+    fprintf(stderr,
+	    "Usage: %s vdfile datafile datacount ess "
+	    "reportfile structfile iterations coolings param_cost pidfile\n", 
+	    argv[0]);
+    exit(-1);
   }
 
   set_signal_handlers();
@@ -891,29 +671,11 @@ int main(int argc, char* argv[]){
 
   ess = atof(argv[4]);
 
-  searchtime = atoi(argv[7]);
-  if (searchtime >= 0) { /* HEY, 0 WILL NOT DO ANYTHING */
-    alarm(searchtime);
-  }
+  iterations = atoi(argv[7]);
+  coolings = atoi(argv[8]);
+  param_cost = atof(argv[9]);
 
-  if (salearner) {
-    T0 = atof(argv[8]);
-    mu_T = atof(argv[9]);
-    iterations = atoi(argv[10]);
-    if (argc == 13) {
-      param_cost = atof(argv[11]);
-      fprintf(stderr, "Using param cost: %g\n", param_cost);
-    }
-  } else if (saautolearner) {
-    T0 = 0;
-    mu_T = 1.01;
-    iterations = atoi(argv[8]);
-    param_cost = atof(argv[9]);
-    fprintf(stderr, "Using param cost: %g\n", param_cost);
-  }
-
-  search(fmt, dt, ess, 10000, argv[5], argv[6],
-	 salearner || saautolearner, T0, mu_T, iterations);
+  search(fmt, dt, ess, 10000, argv[5], argv[6], iterations, coolings);
 
   format_free(fmt);
   data_free(dt);
