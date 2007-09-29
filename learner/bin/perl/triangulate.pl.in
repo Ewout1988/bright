@@ -1,0 +1,143 @@
+#!/usr/bin/perl -w
+
+sub notsubset(){
+    my %set2;
+    grep {$set2{$_}=1} split(/ /,$_[1]);
+    for $v (split(/ /,$_[0])){
+	return 1 if(! exists($set2{$v}));
+    }
+    return 0;
+}
+
+# LOAD THE GRAPH
+
+if(4 != @ARGV) {
+    print STDERR "Usage: $0 vdfile moralfile trgfile clqfile\n";
+    exit;
+}
+
+open(V,"<$ARGV[0]") or die "iik $ARGV[0] $!\n";
+my $nodecount = 0;
+while(<V>){     
+    $vc[$nodecount++] = tr/\t/\t/;
+}
+close(V);
+
+
+# READ MORAL GRAPH
+
+open(M,"<$ARGV[1]");
+while(<M>) {
+    chop;
+    my ($p,$c) = split(/ /,$_);
+    $tg{"$p $c"} = 1;
+    $nghbr{$p}->{$c} = 1; # tgp neighbours
+    $nghbr{$c}->{$p} = 1;
+}
+close(M);
+
+# OK Lets go
+
+%tgp=%tg;
+
+for($i=0; $i<$nodecount; ++$i){
+    $tgpnodes{$i}=1;
+}
+
+while(keys %tgpnodes){
+# 1 Select good node
+    $besti=-1;
+    for $i (keys %tgpnodes) {
+	$primkey[$i] = 0;
+	$seckey[$i] = $vc[$i];
+	@inghbrs = keys %{$nghbr{$i}};
+	for($n1i=0; $n1i<@inghbrs; ++$n1i) {
+	    $n1 = $inghbrs[$n1i];
+	    for($n2i=$n1i+1; $n2i<@inghbrs; ++$n2i) {
+		$n2 = $inghbrs[$n2i];
+		if(!$nghbr{$n1}->{$n2}) {
+		    ++$primkey[$i];
+		}
+	    }
+	    $seckey[$i] *= $vc[$n1];
+	}
+	if($besti==-1  
+	   or $primkey[$i]<$primkey[$besti] 
+	   or ($primkey[$i]==$primkey[$besti] 
+	       and $seckey[$i]<$seckey[$besti])){
+	    # print "$besti($primkey[$besti] $seckey[$besti]) "
+	    # ."changed to $i($primkey[$i] $seckey[$i])\n";
+	    $besti = $i;
+	}
+    }
+    
+    
+# add arcs to make a clique
+    
+    @bestinghbrs = keys %{$nghbr{$besti}};
+    for($n1i=0; $n1i<@bestinghbrs; ++$n1i) {
+	$n1 = $bestinghbrs[$n1i];
+	for($n2i=$n1i+1; $n2i<@bestinghbrs; ++$n2i) {
+	    $n2 = $bestinghbrs[$n2i];
+	    $tgp{"$n1 $n2"} = 1;
+	    $nghbr{$n1}->{$n2} = 1;
+	    $nghbr{$n2}->{$n1} = 1;
+	    $tg{"$n1 $n2"} = 1;
+	}
+    }
+
+# store clique if not a subset of some old clique
+
+    if(@bestinghbrs){
+	$newclq = "$besti @bestinghbrs";
+    } else {
+	$newclq = "$besti";
+    }
+    if(! defined %cliques) {
+	$cliques{$newclq} = 1;
+	# print STDERR "storing new clique ($newclq)\n";
+    } else {
+	$not_subset = 1;
+	for $oldclq (keys %cliques) {
+	    $not_subset &&= &notsubset($newclq,$oldclq);
+	    last unless $not_subset;
+	}
+	
+	if($not_subset) {
+	    $cliques{$newclq} = 1;
+	    # print STDERR "storing new clique ($newclq)\n";
+	}	    
+    }
+    
+# delete besti from tgp;
+    
+    delete $tgpnodes{$besti};
+    delete $nghbr{$besti};
+    # print STDERR "deleting node $besti\n";
+
+    grep {delete $nghbr{$_}->{$besti}} @bestinghbrs;
+    
+}
+
+# PRINT TRIANGULATED GRAPH OF CLIQUE INDEXES
+
+open(T,">$ARGV[2]");
+my $k;
+for $k (keys %tg) {
+    print T "$k\n";
+}
+close(T);
+
+
+# SORT CLIQUES' CONTENT AND PRINT CLIQUES 
+
+open(C,">$ARGV[3]");
+for $clqkey (keys %cliques){
+    my @clqt = split(/ /,$clqkey);
+    print C join(" ",sort {$a<=>$b} @clqt),"\n"
+}
+close(C);
+
+
+
+

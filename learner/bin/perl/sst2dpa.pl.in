@@ -1,0 +1,22 @@
+#!/usr/bin/perl -w
+
+if(@ARGV != 3) {
+    print STDERR "Usage: $0 sstfile ess dpafile\n";
+    exit;
+}
+
+($sstfile, $ess, $dpafile) = @ARGV;
+
+open(SSF,"<$sstfile");
+open(DPA,">$dpafile");
+while(<SSF>){
+    chop;
+    $pcc=$_;
+    print DPA "$pcc\n";
+    for($i=0; $i<$pcc; ++$i){
+	@r = split(/ /,scalar(<SSF>));
+	print DPA +(join " ",(map {$_ + $ess/($pcc*@r)} @r)),"\n";
+    }
+}
+close(DPA);
+close(SSF);

@@ -1,0 +1,112 @@
+#!/usr/bin/perl -w
+
+use Getopt::Std;
+
+$grapher = "dot";
+
+if(@ARGV < 3 or @ARGV > 8 or not getopts('ln:m:')) {
+	print STDERR "Usage: $0 [options] strfile arcwfile giffile\n";
+	print STDERR "Options:\n";
+	print STDERR "  -n vdfile  : prints names of variables\n";
+	print STDERR "  -l         : prints loners too\n";
+	print STDERR "  -m cfile   : cfile contains regexps with colors for nodes\n";
+	exit;
+}
+
+my %highlight;
+
+if(defined $opt_n) { # READ VARIABLE NAMES
+    open(V,"<$opt_n") or die "iik $opt_n $!\n";
+    while(<V>){
+	my ($varname, @valnames) = split(/\t/);
+	push @varnames, $varname;	
+    } 
+    close(V);
+}
+
+if(defined $opt_m) {
+    open(V,"<$opt_m") or die "iik $opt_m $!\n";
+    while(<V>){
+	my ($labelregexp, $labelcolor) = split(/\t/);
+	$labelcolor =~ s/\n//;
+	$highlight{$labelregexp} = $labelcolor;
+    } 
+    close(V);
+}
+
+# READ STRUCT
+
+open(G,"<$ARGV[0]") or die "iik $ARGV[0] $!\n"; 
+$nodecount = <G>; 
+chop $nodecount; 
+for($i=0; $i<$nodecount; ++$i){
+    ($childcount[$i], $parentcount[$i], @rest) = split(/\s+/, <G>);
+     $parent[$i] = ($parentcount[$i]) ? [@rest] : [];
+     for $p (@{$parent[$i]}) { $arcs{"$p $i"} = 1 }
+     $loner[$i] = 1 if($childcount[$i] == 0 and $parentcount[$i] == 0); 
+}
+close(G);
+
+# READ ARCWEIGHTS
+
+open(G,"<$ARGV[1]") or die "iik $ARGV[1] $!\n"; 
+my $line = <G>;
+while($line) {
+    my ($p, $i, $w) = split(/\s+/, $line);
+    $arcw{"$p $i"} = $w;
+    $line = <G>;
+}
+close(G);
+
+$gfile = "/tmp/gr.$$";
+
+open(G,">$gfile");
+
+print G "digraph \"Weights of $ARGV[0]\" {\n";
+print G "     margin=\"0.1,0.1\"\n";
+print G "     clusterrand=none;";
+print G "     ratio=auto\n";
+print G "     edge [color=\"black\"]\n";
+
+for($i=0; $i<$nodecount; ++$i){
+    next if ! $opt_l and defined $loner[$i];
+    my $label = (defined $varnames[$i]) ? $varnames[$i] : $i;
+    my $extrastyle="";
+    while (($labelregexp,$colorname) = each %highlight) {
+        if ($label =~ /$labelregexp/g) {
+          $extrastyle = ',style=filled,color=' . $colorname;
+	}
+    }
+    print G qq/\t$i [label="$label"$extrastyle];\n/;
+}
+
+sub getcolor() {
+    my ($a) = @_;
+    my  $w = $arcw{$a};
+    my $color = "";
+    if($w eq "inf" or 1000000000<$w) {
+	$color = "black";
+    } elsif(1000000<$w) {
+	$color = "0.78,0.83,0.50";
+    } elsif(1000<$w) {
+	$color = "0.61,0.77,0.91";
+    } else {
+	$color = "0.51,0.69,0.92";
+    }
+    return $color;
+}
+
+for $a (keys %arcs){
+    my ($c1,$c2) = split(/ /,$a);
+    $col = &getcolor($a);
+#    print G "\t$c1 -> $c2 [style=bold weight=2 color=\"$col\"];\n";
+    print G "\t$c1 -> $c2 [weight=2 color=\"$col\"];\n";
+}
+
+print G "}\n";
+
+close(G);
+
+system("$grapher -Tps -o $ARGV[2] $gfile");
+unlink $gfile;
+undef $opt_l; # trick to get the stupid warning away

@@ -1,0 +1,204 @@
+#!/usr/bin/perl -w
+
+
+sub hashintersect() {
+    my %u;
+    my $hr;
+    my $k;
+
+    OUTER: for $k (keys %{$_[0]}){
+	for $hr (@_[1..$#_]) {
+	    next OUTER unless($hr->{$k});
+	}
+	$u{$k} = 1;
+    }    
+    return \%u;
+}
+
+sub hashminus() {
+    my %u = %{$_[0]};
+    my $k;
+    
+    for $k (keys %{$_[1]}){
+	delete $u{$k} if(exists $u{$k});
+    }
+    return \%u;
+}
+
+sub a2h(){
+    my %r = map {$_,1} @_;
+    return \%r;
+}
+
+sub issubset() {
+    my $a;
+    for $a (keys %{$_[0]}) {
+	return 0 if(! $_[1]->{$a});
+    }
+    return 1;
+}
+
+
+if(@ARGV != 5) {
+    print STDERR "Usage: $0 strfile thfile jtrfile clqfile qjtfile\n";
+    exit;
+}
+my ($strfile, $thfile, $jtrfile, $clqfile, $qjtfile) = @ARGV;
+
+
+# LOAD THE STRUCT
+
+open(G,"<$strfile") or die "iik $strfile $!\n";
+$nodecount = <G>;
+chop $nodecount;
+for($i=0; $i<$nodecount; ++$i){
+    ($childcount[$i], $parentcount[$i], @rest) = split(/\s+/, <G>);
+    $parent[$i] = ($parentcount[$i]) ? [@rest] : [];
+    for $p (@{$parent[$i]}) { $arcs{"$p $i"} = 1 }
+    (push @loner, $i) if($childcount[$i] == 0 and $parentcount[$i] == 0);
+}
+close(G);
+undef @loner;
+undef @arcs;
+
+# LOAD THETA
+
+open(THF,"<$thfile");
+for($i=0; $i<$nodecount; ++$i){
+    $pcc=<THF>;
+    chop $pcc;
+    for($p=0;$p<$pcc;++$p){
+	push @{$theta[$i]}, split(/ /,scalar(<THF>));
+    }
+    $valcount[$i] = @{$theta[$i]}/$pcc;
+}   
+close(THF);
+
+
+# LOAD CLIQUES
+
+open(C,"<$clqfile");
+while(<C>){
+    my @clq = split(/\s+/,$_);
+    push @clique, &a2h(@clq);
+}
+close(C);
+$clqcount = @clique;
+
+# LOAD JOINTREE
+
+open(J,"<$jtrfile");
+while(<J>){
+    my ($c1,$c2) = split(/\s+/,$_);
+    $clqnghbr{$c1}->{$c2} = 1;
+    $clqnghbr{$c2}->{$c1} = 1;
+}
+close(J);
+
+
+
+# FIND CLIQUE PARENTS AND LEAFS
+
+undef @S;
+undef @R;
+undef @clqparent;
+
+sub direct_away_from{
+    my $x = $_[0];
+    my @xnghbrs = keys %{$clqnghbr{$x}};
+    if(0 == @xnghbrs) {
+	push @leafs, $x;
+    } else {
+	my $n;
+	for $n (@xnghbrs){
+	    delete $clqnghbr{$x}->{$n};
+	    delete $clqnghbr{$n}->{$x};
+	    $clqparent[$n] = $x;
+	    &direct_away_from($n);
+	}
+    } 
+}
+
+$clqroot = 0; #How about some smarter choice
+$clqparent[$clqroot] = -1;
+&direct_away_from($clqroot);
+
+
+# ASSIGN VARIABLES TO CLIQUES AND CALCULATE
+
+for $v (0..$nodecount-1){
+    $famv = &a2h(@{$parent[$v]},$v);
+    for($i=0; $i<$clqcount; ++$i){
+	if(&issubset($famv,$clique[$i])){
+	    push @{$f_1[$i]},  $v;
+	    last;
+	}
+    }
+}
+
+# CALCULATE CCC - CLIQUE CONFIGURATION COUNT
+for($i=0; $i<@clique; ++$i){
+    $vcc[$i] = 1;
+    grep {$vcc[$i] *= $valcount[$_]} (keys %{$clique[$i]});
+}
+
+
+open(QJT, ">$qjtfile");
+print QJT "$nodecount @valcount\n";
+print QJT scalar($clqcount),"\n";
+print QJT scalar(@leafs)," @leafs\n";
+print QJT "\n";
+for($i=0; $i<$clqcount; ++$i){
+
+    @cv = sort {$a<=>$b} keys %{$clique[$i]};
+    print QJT scalar(@cv), " @cv\n";
+    
+    print QJT "$clqparent[$i]\n";
+    
+    if($i == $clqroot) {
+	$S = {};
+    } else {
+	$S = &hashintersect($clique[$i], $clique[$clqparent[$i]]);
+    }
+    
+    $R = &hashminus($clique[$i],$S);
+
+    @sv = sort {$a<=>$b} keys %{$S};
+    print QJT scalar(@sv), " @sv\n";
+
+    @rv = sort {$a<=>$b} keys %{$R};
+    print QJT scalar(@rv), " @rv\n";
+    
+    if(!defined($f_1[$i])){
+	$f_1[$i] = [];
+    }
+    print QJT scalar(@{$f_1[$i]}), " @{$f_1[$i]}\n";
+
+    print QJT "$vcc[$i]";
+    if($f_1[$i]){
+	@cfg = (0) x $nodecount;
+	for($vci = $vcc[$i]-1; $vci>=0; --$vci){	    
+
+	    $x = 1;
+	    for $fid (@{$f_1[$i]}){
+		$pci = 0;
+		$base = 1;
+		for $pid (@{$parent[$fid]}){
+		    $pci += $base * $cfg[$pid];
+		    $base *= $valcount[$pid];
+		}
+		$x *= $theta[$fid]->[$pci*$valcount[$fid] + $cfg[$fid]];
+	    }
+	    print QJT " $x";
+
+	    last if (!$vci); # next configuration
+
+	    for $cvid (@cv) {
+		last if(++ $cfg[$cvid] < $valcount[$cvid]);
+		$cfg[$cvid] = 0;
+	    }
+	}
+    }
+    print QJT "\n\n";
+}
+close(QJT);
