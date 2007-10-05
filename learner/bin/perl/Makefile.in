@@ -142,7 +142,8 @@ str_n_arcw2ps.pl \
 joincliques.pl \
 moralize.pl \
 quantify.pl \
-sst2dpa.pl
+sst2dpa.pl \
+triangulate.pl
 
 subdir = bin/perl
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4

@@ -7,7 +7,7 @@ log_file="$1/.log"
 
 vd_file="$1/inputs/vd"
 idt_file="$1/inputs/idt"
-str_file="$1/inputs/vd"
+str_file="$1/inputs/str"
 options_file="$1/inputs/options"
 
 ess=`cat $options_file | grep ESS | sed -e 's/ESS=//g'`
