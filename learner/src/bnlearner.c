@@ -346,6 +346,15 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
   double T0, T;
   double mu_T = 1.01; 
 
+  int Titerations = 0;
+
+  arc* del_ar;
+  arc* add_ar;
+
+  greedy_change sach[3];
+  greedy_unchange sauch[3];
+  greedy_unchange sacmpl[3];
+
   MECALL(ar, 1, arc);
 
   /* Create initial forest and find root candidates */
@@ -439,15 +448,6 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
   stp->tn = -1;
   stp->best_score = stg->best_score;
 
-  int Titerations = 0;
-
-  arc* del_ar;
-  arc* add_ar;
-
-  greedy_change sach[3];
-  greedy_unchange sauch[3];
-  greedy_unchange sacmpl[3];
-
   sach[0] = bane_add_random_arc;
   sach[1] = bane_del_random_arc;
   sach[2] = bane_rev_random_arc;
@@ -463,10 +463,12 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
   MECALL(del_ar, 1, arc);
   MECALL(add_ar, 1, arc);
 
+  int improved = 1;
   int calibrating = 1;
+  double max_a = 0, max_b = 0;
 
-  T = 1; // start from 1, and go up until accept ratio > 0.8
-   
+  T = 1; // start from 1, and go up until accept ratio > 0.6
+
   while (!usr2_set) {
     int n_accepts = 0;
     int n_rejects = 0;
@@ -575,9 +577,8 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 	  stg->best_score = new_score;
 	  stg->tn_when_best = stg->tn;
 	  bane_assign(stg->beba, bn);
-	  fprintf(stderr, "N");
+	  improved = 1;
 	} else if (new_score == stg->best_score) {
-	  fprintf(stderr, "h");
 	}
       } else {
 	if (ch < 3)
@@ -599,24 +600,37 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
       }
     }
 
-    double acceptratio
+    double acceptratio_a
       = (double)(n_accepts + n_eless)/(n_accepts + n_eless + n_rejects);
-    double acceptratio2
+    double acceptratio_b
       = (double)(n_eless)/(n_accepts + n_eless + n_rejects);
 
+    if (acceptratio_a > max_a)
+      max_a = acceptratio_a;
+    if (acceptratio_b > max_b)
+      max_b = acceptratio_b;
+
     if (calibrating) {
-      if (acceptratio >= 0.6) {
+      if (acceptratio_a >= 0.6) {
 	// between 40 and 90: http://dx.doi.org/10.1016/S0045-7949(03)00214-1
 	calibrating = 0;
 	T0 = T;
-	fprintf(stderr, "Calibration done\n");
       } else {
 	T *= 1.1;
       }
     } else {
       T /= mu_T;
 
-      if ((acceptratio < 0.20) && (acceptratio2 < 0.005)) {
+      if (improved) {
+	write_report_n_structure(stg, stp, reportfilename, structfilename,
+				 Titerations);
+	improved = 0;
+      }
+
+#define AR_A_CUTOFF 0.20
+#define AR_B_CUTOFF 0.005
+
+      if ((acceptratio_a <= AR_A_CUTOFF) && (acceptratio_b <= AR_B_CUTOFF)) {
 	++Titerations;
 	T = T0;
 	write_report_n_structure(stg, stp, reportfilename, structfilename,
@@ -624,11 +638,19 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 
 	if (Titerations == coolings)
 	  exit(0);
+	max_a = 0;
+	max_b = 0;
+      } else {
       }
-    }
 
-    fprintf(stderr, "T: %g score: %g (accept-ratio: %g, %g)\n", T,
-	    new_score, acceptratio, acceptratio2);
+      double p_a = 1 - (acceptratio_a - AR_A_CUTOFF)/(max_a - AR_A_CUTOFF);
+      double p_b = 1 - (acceptratio_b - AR_B_CUTOFF)/(max_b - AR_B_CUTOFF);
+
+      double p = p_a < p_b ? p_a : p_b;
+      double p_total = (double)Titerations/coolings + p/coolings;
+
+      fprintf(stderr, "%g\n", p_total);
+    }
   }
 
   search_stats_free(stl);
