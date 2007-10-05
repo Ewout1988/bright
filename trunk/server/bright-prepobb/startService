@@ -17,12 +17,12 @@ pla_file="$1/outputs/pla"
 qjt_file="$1/outputs/qjt"
 dpa_file="$1/outputs/dpa"
 
-sst_file="data.sst"
-tht_file="data.tht"
-moral_file="data.moral"
-trg_file="data.trg"
-clq_file="data.clq"
-jtree_file="data.jtree"
+sst_file="$1/data.sst"
+tht_file="$1/data.tht"
+moral_file="$1/data.moral"
+trg_file="$1/data.trg"
+clq_file="$1/data.clq"
+jtree_file="$1/data.jtree"
 
 $bin/str2pla.pl $vd_file $str_file $pla_file 2>> $log_file
 $bin/str_n_dat2sst $str_file $vd_file $idt_file $dcount $sst_file 2>> $log_file
