@@ -1,0 +1,42 @@
+<?xml version='1.0' encoding='utf-8'?>
+<service>
+	<description>
+	B-Right preprocessing for inference tool (obb)
+	</description>
+	<version>
+	0.1
+	</version>
+
+<inputs>
+	<input>
+		<name>vd</name>
+		<description>.vd file</description>
+	</input>
+        <input>
+                <name>idt</name>
+                <description>.idt file</description>
+        </input>
+        <input>
+                <name>str</name>
+                <description>.str file</description>
+        </input>
+        <input>
+                <name>options</name>
+                <description>.options file</description>
+        </input>
+</inputs>
+<outputs>
+	<output>
+		<name>pla</name>
+		<description>.pla file</description>
+	</output>
+	<output>
+		<name>qjt</name>
+		<description>.qjt file</description>
+	</output>
+	<output>
+		<name>dpa</name>
+		<description>.dpa file</description>
+	</output>
+</outputs>
+</service>
