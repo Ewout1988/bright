@@ -1,0 +1,36 @@
+#!/bin/sh
+
+bin=/soft/bright/bin/
+
+running_file="$1/.running"
+log_file="$1/.log"
+
+vd_file="$1/inputs/vd"
+idt_file="$1/inputs/idt"
+str_file="$1/inputs/vd"
+options_file="$1/inputs/options"
+
+ess=`cat $options_file | grep ESS | sed -e 's/ESS=//g'`
+dcount=`cat $idt_file | wc -l`
+
+pla_file="$1/outputs/pla"
+qjt_file="$1/outputs/qjt"
+dpa_file="$1/outputs/dpa"
+
+sst_file="data.sst"
+tht_file="data.tht"
+moral_file="data.moral"
+trg_file="data.trg"
+clq_file="data.clq"
+jtree_file="data.jtree"
+
+$bin/str2pla.pl $vd_file $str_file $pla_file 2>> $log_file
+$bin/str_n_dat2sst $str_file $vd_file $idt_file $dcount $sst_file 2>> $log_file
+$bin/sst2tht.pl $sst_file $ess $tht_file 2>> $log_file
+$bin/moralize.pl $str_file $moral_file 2>> $log_file
+$bin/triangulate.pl $vd_file $moral_file $trg_file $clq_file 2>> $log_file
+$bin/joincliques.pl $vd_file $clq_file $jtree_file 2>> $log_file
+$bin/quantify.pl $str_file $tht_file $jtree_file $clq_file $qjt_file 2>> $log_file
+$bin/sst2dpa.pl $sst_file $ess $dpa_file 2>> $log_file
+
+rm "$running_file"
