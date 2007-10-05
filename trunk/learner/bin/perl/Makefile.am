@@ -6,4 +6,5 @@ str_n_arcw2ps.pl \
 joincliques.pl \
 moralize.pl \
 quantify.pl \
-sst2dpa.pl
+sst2dpa.pl \
+triangulate.pl
