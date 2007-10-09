@@ -1,0 +1,639 @@
+/*
+ * Created on Sep 29, 2007
+ *
+ * To change the template for this generated file go to
+ * Window>Preferences>Java>Code Generation>Code and Comments
+ */
+package bright.gui;
+
+import java.awt.BorderLayout;
+import java.awt.Component;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.GridLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.util.ArrayList;
+import java.util.Date;
+
+import javax.swing.Action;
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.DefaultListModel;
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JDialog;
+import javax.swing.JFileChooser;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JList;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.ListSelectionModel;
+import javax.swing.UIManager;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
+import javax.swing.filechooser.FileFilter;
+
+import org.apache.batik.swing.JSVGCanvas;
+import org.apache.batik.swing.JSVGScrollPane;
+import org.apache.batik.swing.svg.GVTTreeBuilderEvent;
+import org.apache.batik.swing.svg.GVTTreeBuilderListener;
+import org.apache.batik.swing.svg.SVGDocumentLoaderEvent;
+import org.apache.batik.swing.svg.SVGDocumentLoaderListener;
+
+public class Bright extends JPanel {
+    private static final long serialVersionUID = 2973533647984331299L;
+
+    private static final FileFilter projectFileFilter = new FileFilter() {
+        public boolean accept(File f) {
+            return f.getName().endsWith("xml")
+                || f.getName().endsWith("XML")
+                || f.isDirectory();
+        }
+        public String getDescription() {
+            return "Bright project (bright.xml) files";
+        } };
+
+    private static final String ABOUT_MESSAGE = "B-Right 0.1 (c) 2007 Koen Deforche, Tomi Silander\n"
+          + "\n"
+          + "Contact:\n"
+          + "    koen.deforche@gmail.com";
+
+    private Project project;
+
+    private JFileChooser fc;
+    
+    private ArrayList<JMenuItem> haveProjectItems;
+    private ArrayList<JMenuItem> haveDataItems;
+    private ArrayList<JMenuItem> haveNetworkItems;
+    private JFrame topframe;
+    private JList networkList;
+    private DefaultListModel networkListModel;
+    private JSVGCanvas svgNetwork;
+
+    private JLabel status;
+
+    private JLabel scoreField;
+    private JLabel arcCountField;
+
+    private JLabel evaluationsField;
+
+    private JLabel learnerField;
+
+    private JLabel essField;
+
+    private JLabel extraParameterCostField;
+
+    private JLabel iterationsField;
+
+    private JLabel coolingsField;
+
+    public Bright(JFrame frame) {
+        project = null;
+        this.topframe = frame;
+        
+        createGUI(frame);
+    }
+
+    private void createGUI(final JFrame frame) {        
+        setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+        add(createProjectPane());
+        
+        fc = new JFileChooser();        
+
+        haveProjectItems = new ArrayList<JMenuItem>();
+        haveDataItems = new ArrayList<JMenuItem>();
+        haveNetworkItems = new ArrayList<JMenuItem>();
+        
+        final JMenuBar menuBar = new JMenuBar();
+        frame.setJMenuBar(menuBar);
+
+        JMenu menu = new JMenu("Project");
+        menuBar.add(menu);
+
+        JMenuItem menuItem = new JMenuItem("New project...");
+        menu.add(menuItem);
+        menuItem.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent ae) {
+                
+                if (dirtyCheckOk()) {
+                    fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);        
+                    fc.setFileFilter(null);
+
+                    int returnVal = fc.showDialog(Bright.this, "Choose project directory");
+                    if (returnVal == JFileChooser.APPROVE_OPTION) {
+                        Project p = new Project();
+                        p.setProjectDir(fc.getSelectedFile().getAbsolutePath());
+
+                        File vdFile = new File(p.getVdFile());
+                        File idtFile = new File(p.getIdtFile());
+                        
+                        if (vdFile.exists() || idtFile.exists()) {
+                            JOptionPane.showMessageDialog(Bright.this,
+                                    "Warning: this project directory already contains data files, possibly from another bright project.\n" +
+                                    "After loading data, these will be overwritten, destroying this other project!",
+                                    "Warning", JOptionPane.WARNING_MESSAGE);
+                        }
+
+                        setProject(p);
+                    }
+                }
+            }
+        });
+        
+        menuItem = new JMenuItem("Open project...");
+        menu.add(menuItem);
+
+        menuItem.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent ae) {
+                
+                if (dirtyCheckOk()) {
+                    fc.setFileSelectionMode(JFileChooser.FILES_ONLY);
+                    fc.setFileFilter(projectFileFilter);
+
+                    int returnVal = fc.showOpenDialog(Bright.this);
+                    if (returnVal == JFileChooser.APPROVE_OPTION) {
+                        File file = fc.getSelectedFile();
+                        try {
+                            setProject(new Project(file));
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                            JOptionPane.showMessageDialog(Bright.this,
+                                    "I/O error reading file: '" + file.getAbsolutePath() + "': "+ e.getMessage(),
+                                    "Error", JOptionPane.ERROR_MESSAGE);
+                        } catch (ApplicationException e) {
+                            JOptionPane.showMessageDialog(Bright.this,
+                                    "Error reading project file: '" + file.getAbsolutePath() + "': "+ e.getMessage(),
+                                    "Error", JOptionPane.ERROR_MESSAGE);
+                        }
+                    }
+                }
+            }
+        });
+
+        haveProjectItems.add(menuItem = new JMenuItem("Save project...", createImageIcon("images/Save16.gif")));
+        menu.add(menuItem);
+        menuItem.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent ae) {
+                saveProject();
+            }
+        });
+
+        menu.addSeparator();
+
+        haveProjectItems.add(menuItem = new JMenuItem("Import data...", createImageIcon("images/Open16.gif")));
+        menu.add(menuItem);
+        menuItem.addActionListener(openDataFile());
+        
+        menu.addSeparator();
+        
+        menuItem = new JMenuItem("Quit");
+        menu.add(menuItem);
+        menuItem.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent ae) {                
+                if (dirtyCheckOk())
+                    System.exit(0);
+            }
+        });
+
+        menu = new JMenu("Network");
+        menuBar.add(menu);
+
+        haveDataItems.add(menuItem = new JMenuItem("Learn best..."));
+        menu.add(menuItem);
+        menuItem.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent ae) {
+                JDialog d = new LearnerDialog(project, Bright.this, topframe);
+                d.setVisible(true);
+            }
+        });        
+        
+        haveNetworkItems.add(menuItem = new JMenuItem("Inference..."));
+        menu.add(menuItem);
+        menuItem.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                try {
+                    getSelectedNetwork().startInferencePlayground(project);
+                } catch (ApplicationException e1) {
+                    JOptionPane.showMessageDialog(Bright.this,
+                            e1.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+        
+        menu = new JMenu("Settings");
+        menuBar.add(menu);
+        menuItem = new JMenuItem("Edit...");
+        menu.add(menuItem);
+        menuItem.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                JDialog d = new SettingsDialog(topframe);
+                d.setVisible(true);
+            }
+
+        });
+
+        
+        menuBar.add(Box.createHorizontalGlue());
+        
+        menu = new JMenu("Help");
+        menuBar.add(menu);
+        
+        menuItem = new JMenuItem("About B-Right");
+        menu.add(menuItem);
+        menuItem.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                JOptionPane.showMessageDialog(Bright.this,
+                                              ABOUT_MESSAGE,
+                                              "About", JOptionPane.PLAIN_MESSAGE);
+            }
+
+        });
+
+        setEnabled(haveProjectItems, false);
+        setEnabled(haveDataItems, false);
+        setEnabled(haveNetworkItems, false);
+    }
+
+    private void setEnabled(ArrayList<JMenuItem> items, boolean how) {
+        for (JMenuItem i:items) {
+            i.setEnabled(how);
+        }
+    }
+
+    /**
+     * @return
+     */
+    private ActionListener openDataFile() {
+        return new ActionListener() {
+            public void actionPerformed(ActionEvent ae) {
+                if (project.getNetworks().size() != 0) {
+                    if (JOptionPane.showConfirmDialog(Bright.this,
+                            "Warning: your project contains networks, these will be deleted when loading new data.\n" +
+                            "Do you want to proceed?",
+                            "Warning", JOptionPane.YES_NO_OPTION) == JOptionPane.NO_OPTION) {
+                        return;
+                    }
+                }               
+
+                fc.setFileSelectionMode(JFileChooser.FILES_ONLY);
+                fc.setFileFilter(new FileFilter() {
+                    public boolean accept(File f) {
+                        return f.getName().endsWith("csv")
+                            || f.getName().endsWith("CSV")
+                            || f.isDirectory();
+                    }
+                    public String getDescription() {
+                        return "Comma-Separated-Value (.csv) files";
+                    } });
+
+                int returnVal = fc.showOpenDialog(Bright.this);
+                if (returnVal == JFileChooser.APPROVE_OPTION) {
+                    File dataFile = fc.getSelectedFile();
+                    Table data;
+                    try {
+                        data = new Table(new BufferedInputStream(new FileInputStream(dataFile)), false);
+                        
+                        // TODO: sanity check data
+                        
+                        project.setNumInstances(data.numRows() - 1);
+                        try {
+                            File vdFile = new File(project.getVdFile());
+                            File idtFile = new File(project.getIdtFile());
+                            
+                            BufferedOutputStream outputVd = new BufferedOutputStream(new FileOutputStream(vdFile));
+                            BufferedOutputStream outputIdt = new BufferedOutputStream(new FileOutputStream(idtFile));
+                            data.exportAsVdFiles(outputVd, outputIdt);
+                            outputVd.flush();
+                            outputIdt.flush();
+
+                            setEnabled(haveDataItems, true);
+                            
+                            deleteNetworks();
+                        } catch (FileNotFoundException e1) {
+                            JOptionPane.showMessageDialog(Bright.this,
+                                    "I/O error writing: " + e1.getMessage(),
+                                    "Error", JOptionPane.ERROR_MESSAGE);
+                        } catch (IOException e) {
+                            JOptionPane.showMessageDialog(Bright.this,
+                                    "I/O error writing: " + e.getMessage(),
+                                    "Error", JOptionPane.ERROR_MESSAGE);
+                        }
+                   } catch (FileNotFoundException e1) {
+                        JOptionPane.showMessageDialog(Bright.this,
+                                "Could not read: " + dataFile.getAbsolutePath(),
+                                "Error", JOptionPane.ERROR_MESSAGE);
+                    } catch (RuntimeException e) {
+                        JOptionPane.showMessageDialog(Bright.this,
+                                "Error reading " + dataFile.getAbsolutePath() + " " + e.getMessage(),
+                                "Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                } else {
+                }
+            }
+        };
+    }
+
+    private Component createProjectPane() {
+        final JPanel panel = new JPanel(new BorderLayout());
+
+        status = new JLabel();
+
+        JPanel leftPanel = new JPanel(new BorderLayout());
+
+        JLabel l = new JLabel("Networks:");
+        JPanel networksLabelPane = new JPanel();
+        networksLabelPane.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
+        networksLabelPane.add(l);
+        networksLabelPane.setLayout(new FlowLayout(FlowLayout.LEFT));
+        
+        networkListModel = new DefaultListModel();
+        networkList = new JList(networkListModel);
+        networkList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        networkList.setLayoutOrientation(JList.VERTICAL);        
+        networkList.getSelectionModel().addListSelectionListener(new ListSelectionListener() {
+            public void valueChanged(ListSelectionEvent arg0) {
+                showNetwork(getSelectedNetwork());
+            } });
+
+        JScrollPane listScroller = new JScrollPane(networkList);
+        listScroller.setPreferredSize(new Dimension(250, 80));
+
+        JPanel labelPane = new JPanel();
+        labelPane.setLayout(new GridLayout(0, 1));
+        JPanel fieldPane = new JPanel();
+        fieldPane.setLayout(new GridLayout(0, 1));
+
+        labelPane.add(new JLabel("Learner:"));
+        fieldPane.add(learnerField = new JLabel());
+        labelPane.add(new JLabel("ESS:"));
+        fieldPane.add(essField = new JLabel());
+        labelPane.add(new JLabel("Extra parameter cost:"));
+        fieldPane.add(extraParameterCostField = new JLabel());
+        labelPane.add(new JLabel("Iterations:"));
+        fieldPane.add(iterationsField = new JLabel());
+        labelPane.add(new JLabel("Coolings:"));
+        fieldPane.add(coolingsField = new JLabel());
+        
+        labelPane.add(new JLabel("Score:"));
+        fieldPane.add(scoreField = new JLabel());
+        labelPane.add(new JLabel("Arc count:"));
+        fieldPane.add(arcCountField = new JLabel());
+        labelPane.add(new JLabel("Evaluations:"));
+        fieldPane.add(evaluationsField = new JLabel());
+        
+        JPanel detailsPane = new JPanel();
+        detailsPane.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+        detailsPane.setLayout(new BorderLayout());
+        detailsPane.add(labelPane, BorderLayout.CENTER);
+        detailsPane.add(fieldPane, BorderLayout.EAST);
+        
+        leftPanel.add("North", networksLabelPane);
+        leftPanel.add("Center", listScroller);
+        leftPanel.add("South", detailsPane);
+
+        panel.add("West", leftPanel);
+
+        svgNetwork = new JSVGCanvas();
+        svgNetwork.setPreferredSize(new Dimension(500, 500));
+        svgNetwork.addSVGDocumentLoaderListener(new SVGDocumentLoaderListener() {
+            public void documentLoadingStarted(SVGDocumentLoaderEvent arg0) {
+                status.setText("Network loading...");
+            }
+            public void documentLoadingCompleted(SVGDocumentLoaderEvent arg0) {
+                status.setText("Network loaded.");
+            }
+            public void documentLoadingCancelled(SVGDocumentLoaderEvent arg0) { }
+            public void documentLoadingFailed(SVGDocumentLoaderEvent arg0) { }        
+        });
+        svgNetwork.addGVTTreeBuilderListener(new GVTTreeBuilderListener() {
+            public void gvtBuildCancelled(GVTTreeBuilderEvent arg0) { }
+            public void gvtBuildCompleted(GVTTreeBuilderEvent arg0) {
+                status.setText("");
+                /*
+                 * TODO: figure out how to scale to see the whole image
+                 * AffineTransform at = new AffineTransform();
+                 * at.scale(0.1, 0.1);
+                 * at.concatenate(svgNetwork.getRenderingTransform());
+                 * svgNetwork.setRenderingTransform(at);
+                 */
+            }
+            public void gvtBuildFailed(GVTTreeBuilderEvent arg0) { }
+            public void gvtBuildStarted(GVTTreeBuilderEvent arg0) {
+                status.setText("Rendering...");
+            } });
+
+        JSVGScrollPane scroller = new JSVGScrollPane(svgNetwork);
+
+        Action zoomOutAction = svgNetwork.new ZoomAction(0.5);
+        JButton button = new JButton(zoomOutAction);
+        button.setText("Zoom out");
+
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        p.add(button);
+        p.add(status);
+
+        JPanel pcenter = new JPanel(new BorderLayout());
+        pcenter.add("North", p);
+        pcenter.add("Center", scroller);        
+
+        panel.add("Center", pcenter);        
+
+        return panel;
+    }
+    
+    private void setProject(Project p) {
+        this.project = p;
+
+        this.topframe.setTitle("B-Right: " + project.getProjectDir());
+
+        setEnabled(haveProjectItems, true);
+        setEnabled(haveDataItems, project.getNumInstances() != 0);
+        setEnabled(haveNetworkItems, project.getNetworks().size() != 0);
+
+        networkListModel.clear();
+        for (Network n : project.getNetworks()) {
+            networkListModel.addElement(n);
+        }
+
+        if (networkListModel.size() > 0) {
+            networkList.setSelectedIndex(0);
+            showNetwork(project.getNetworks().get(0));
+        } else
+            showNetwork(null);
+    }
+
+    private void showNetwork(Network network) {
+        if (network != null) {
+            try {
+                File svgFile = File.createTempFile("bright", ".svg");
+                network.renderToSvg(project, svgFile);
+                svgNetwork.setURI(svgFile.toURL().toString());
+                svgFile.deleteOnExit();
+            } catch (MalformedURLException e) {
+                JOptionPane.showMessageDialog(Bright.this,
+                        "Internal error: " + e.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
+            } catch (IOException e) {
+                JOptionPane.showMessageDialog(Bright.this,
+                        "Error while writing to temporary file: " + e.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
+            } catch (ApplicationException e) {
+                JOptionPane.showMessageDialog(Bright.this, e.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
+                e.printStackTrace();
+            }
+            
+            scoreField.setText(Double.toString(network.getProperties().getScore()));
+            arcCountField.setText(Integer.toString(network.getArcCount()));
+            evaluationsField.setText(Long.toString(network.getProperties().getEvaluations()));
+            learnerField.setText("Simulated Annealing");
+            iterationsField.setText(Integer.toString(network.getProperties().getLearnerProperties().getIterations()));
+            coolingsField.setText(Integer.toString(network.getProperties().getLearnerProperties().getCoolings()));
+            essField.setText(Double.toString(network.getProperties().getLearnerProperties().getEss()));
+            extraParameterCostField.setText(Double.toString(network.getProperties().getLearnerProperties().getParameterCost()));
+        } else {
+            svgNetwork.setDocument(null);
+            scoreField.setText("");
+            arcCountField.setText("");
+            evaluationsField.setText("");
+            learnerField.setText("");
+            iterationsField.setText("");
+            coolingsField.setText("");
+            essField.setText("");
+            extraParameterCostField.setText("");
+            
+        }
+    }
+
+    private Network getSelectedNetwork() {
+        int selectedIndex = networkList.getSelectedIndex();
+        if (selectedIndex >= 0)
+            return project.getNetworks().get(selectedIndex);
+        else
+            return null;
+    }
+
+    public void addLearnedNetwork(File structFile, String description, Learner.Result result) {
+        try {
+            Network n = new Network(
+                    new Network.Properties(description, new Date(), result, project.getLearnerDefaults()),
+                    structFile, new File(project.getVdFile()));
+
+            project.addNetwork(n);
+            networkListModel.addElement(n);
+            networkList.setSelectedIndex(project.getNetworks().size() - 1);
+            showNetwork(n);
+
+            setEnabled(haveNetworkItems, project.getNetworks().size() != 0);
+        } catch (FileNotFoundException e) {
+            JOptionPane.showMessageDialog(Bright.this,
+                    "Error while accessing project files: " + e.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(Bright.this,
+                    "Error while reading project files: " + e.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    protected void deleteNetworks() {
+        project.getNetworks().clear();
+        networkListModel.clear();
+        setEnabled(haveNetworkItems, false);
+    }
+
+    /**
+     * 
+     */
+    private boolean saveProject() {
+        fc.setFileSelectionMode(JFileChooser.FILES_ONLY);
+        fc.setFileFilter(projectFileFilter);
+        fc.setSelectedFile(new File(project.getProjectDir() + File.separator + "bright.xml"));
+      
+        int returnVal = fc.showSaveDialog(Bright.this);
+        if (returnVal == JFileChooser.APPROVE_OPTION) {
+            File file = fc.getSelectedFile();
+            try {
+                project.save(file);
+                
+                return true;
+            } catch (IOException e) {
+                e.printStackTrace();
+                JOptionPane.showMessageDialog(Bright.this,
+                        "I/O error writing file: '" + file.getAbsolutePath() + "': "+ e.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);                        
+            }
+        }
+        
+        return false;
+    }
+
+    /**
+     * @return
+     */
+    private boolean dirtyCheckOk() {
+        boolean proceed = true;
+
+        if (project != null && project.isDirty()) {
+            int result = JOptionPane.showConfirmDialog(Bright.this,
+                    "Warning: your project contains unsaved changes.\n" +
+                    "Do you want to save them first ?",
+                    "Warning", JOptionPane.YES_NO_CANCEL_OPTION);
+   
+            if (result == JOptionPane.YES_OPTION) {
+                if (!saveProject())
+                    proceed = false;
+            } else if (result == JOptionPane.CANCEL_OPTION) {
+                proceed = false;
+            }
+        }
+
+        return proceed;
+    }
+
+    /** Returns an ImageIcon, or null if the path was invalid. */
+    private static ImageIcon createImageIcon(String path) {
+        java.net.URL imgURL = Bright.class.getResource(path);
+        if (imgURL != null) {
+            return new ImageIcon(imgURL);
+        } else {
+            return new ImageIcon(path);
+        }
+    }
+
+    /**
+     * @param args
+     */
+    public static void main(String[] args) {
+        try {
+            String lookAndFeel = UIManager.getSystemLookAndFeelClassName();
+            UIManager.setLookAndFeel(lookAndFeel);
+        } catch (Exception e) { 
+            e.printStackTrace();
+        }
+
+        //Create the top-level container and add contents to it.
+        JFrame frame = new JFrame("B-Right");
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setContentPane(new Bright(frame));
+
+        //Display the window.
+        frame.pack();
+        frame.setVisible(true);
+    }
+}
