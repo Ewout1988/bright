@@ -3,6 +3,8 @@
 #include "err.h"
 #include "node.h"
 
+int TRACK_OFFSPRING_COUNT = 0;
+
 void 
 node_assign(node* dst, node* src, int nodecount){
   dst->id = src->id;
@@ -17,6 +19,7 @@ node_assign(node* dst, node* src, int nodecount){
   dst->N = src->N;
   dst->ancestorcount = src->ancestorcount;
   memcpy(dst->path_to_me_count, src->path_to_me_count, nodecount*sizeof(int));
+  dst->offspringcount = src->offspringcount;
 }
 
 void 
@@ -36,14 +39,15 @@ node_init(node* nodi, int i, int nodecount){
   nodi->ssp = NULL;
   nodi->ancestorcount = 0;
   for(j=0; j<nodecount; ++j) nodi->path_to_me_count[j] = 0;
+  nodi->offspringcount = 0;
 }
-
 
 void node_write(node* nd, int nodecount, FILE* fp){
   int i;
-  fprintf(fp, "id=%d vals=%d parents=%d children=%d ancestors=%d\n",
+  fprintf(fp, "id=%d vals=%d parents=%d children=%d ancestors=%d"
+	  " offspring=%d\n",
 	  nd->id, nd->valcount, nd->parentcount, nd->childcount, 
-	  nd->ancestorcount);
+	  nd->ancestorcount, nd->offspringcount);
   
   fprintf(fp, "parents: %d ",nd->first_parent);
   for(i=0; i<nodecount;++i){

@@ -25,8 +25,10 @@ struct node {
 
   int* path_to_me_count;
   int ancestorcount;
-
+  int offspringcount;
 };
+
+extern int TRACK_OFFSPRING_COUNT;
 
 #define SS(N,P,C) ((N)->ss[(P) * (N)->valcount + (C)])
 
