@@ -1,6 +1,8 @@
 #ifndef SCORE_HASHTABLE_H
 #define SCORE_HASHTABLE_H
 
+#include "bane.h"
+
 typedef struct ht_pos ht_pos;
 
 struct ht_pos {
@@ -37,6 +39,9 @@ score_hashtable_get_nth_key(score_hashtable* ht, int n);
 
 extern int
 score_hashtable_items_for_mem(int memsize, int key_size);
+
+extern score_hashtable*
+create_hashtable(int mem_size, bane *bn);
 
 #endif
 

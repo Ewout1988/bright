@@ -239,3 +239,17 @@ void main(int argc, char* argv[]){
 }
 
 #endif
+
+score_hashtable *create_hashtable(int mem_size, bane *bn)
+{
+  int keysize;
+  int items_per_pos;
+
+  keysize = bn->pmx->m * bn->pmx->one_dim_size;
+  items_per_pos = score_hashtable_items_for_mem(mem_size, keysize);
+
+  if(items_per_pos < 1) items_per_pos = 1;
+  if(items_per_pos > 10) items_per_pos = 10;
+
+  return score_hashtable_create(keysize, items_per_pos);
+}
