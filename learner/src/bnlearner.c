@@ -110,11 +110,7 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
   int items_per_pos;
   arc* ar;
 
-  bane* bnf;         /* forest to start */
   bane* bn = NULL;
-
-  int* roots;
-  int rootpos;
 
   double T0, T;
   double mu_T = 1.01; 
@@ -130,31 +126,12 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 
   MECALL(ar, 1, arc);
 
-  /* Create initial forest and find root candidates */
-
-  bnf = bane_create_forest(fmt,ess,dt);
-  {
-    int r;
-    MEMALL(roots, bnf->nodecount, int);
-    rootpos = 0; /* first postition that deserves to be root */
-    for(r=0; r<bnf->nodecount; ++r){
-      if((bnf->nodes[r].childcount > 0) || (bnf->nodes[r].parentcount > 0)) {
-	roots[r] = r;
-      } else {
-	roots[r] = roots[rootpos];
-	roots[rootpos] = r;
-	++ rootpos;
-      }
-    }
-  }
-
   /*
     Open struct file if it already exists and take that struct as
     the current best.
    */
   {
     struct stat *buf;
-
     FILE *fp = fopen(structfilename, "r");
 
     if (fp) {
@@ -163,35 +140,48 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
       bn = bane_create_from_format(fmt);
       bane_read_structure(bn,fp);
       fclose(fp);
-      stg = search_stats_create(bn);
-      bane_gather_full_ss(stg->beba, dt);
-      stg->best_score = 
-	bane_get_score_param_costs(stg->beba, ess, NULL);
     }
   }
 
-  /* Take first forest candidate */
   if (!bn) {
-    int x;
+    /* Take first forest candidate */
+    int r;
+    bane* bnf = bane_create_forest(fmt,ess,dt);
+    int* roots;
+    int  rootpos;
+
+    MEMALL(roots, bnf->nodecount, int);
+    rootpos = 0; /* first postition that deserves to be root */
+    for (r=0; r<bnf->nodecount; ++r){
+      if ((bnf->nodes[r].childcount > 0) || (bnf->nodes[r].parentcount > 0)) {
+	roots[r] = r;
+      } else {
+	roots[r] = roots[rootpos];
+	roots[rootpos] = r;
+	++ rootpos;
+	}
+    }
+
     bn = bane_copy(bnf);
-    if(rootpos < bnf->nodecount) {
-      for(x=roots[rootpos]; bn->nodes[x].parentcount > 0; x=ar->from) {
-	ar->from = bn->nodes[x].first_parent;
-	ar->to = x;
+    if (rootpos < bnf->nodecount) {
+      for (r=roots[rootpos]; bn->nodes[r].parentcount > 0; r=ar->from) {
+	ar->from = bn->nodes[r].first_parent;
+	ar->to = r;
 	bane_rev_arc(bn,ar);
 	bane_rev_arc_complete(bn,ar);
       }
-      /* fprintf(stderr,"Trying root number %d\n",roots[rootpos]); */
-      ++rootpos;
     }
+
+    free(roots);
+    bane_free(bnf);
   }
 
-  if (!stg) {
-    stg = search_stats_create(bn);
-    stg->best_score = 0;
-  }
+  stg = search_stats_create(bn);
   stl = search_stats_create(bn);
   stp = search_stats_create(bn);
+
+  bane_gather_full_ss(stg->beba, dt);
+  stg->best_score = bane_get_score_param_costs(stg->beba, ess, NULL);
 
   bane_free(bn);
 
@@ -424,7 +414,6 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
   free(scoreboard);
   free(ar);
   score_hashtable_free(sht);
-  free(roots);
 }
 
 int main(int argc, char* argv[]){
