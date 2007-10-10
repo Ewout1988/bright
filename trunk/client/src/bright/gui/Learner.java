@@ -114,10 +114,13 @@ public class Learner {
             File reportFile = File.createTempFile("bnlearn", ".stat", projectDir);
             File pidFile = File.createTempFile("bnlearn", ".pid", projectDir);
 
+	    structFile.delete();
+
             String cmds[] = { Settings.getSettings().getLearnerDir() + "bnlearner", project.getVdFile(), project.getIdtFile(),
                     String.valueOf(project.getNumInstances()), String.valueOf(properties.getEss()),
                     reportFile.getAbsolutePath(), structFile.getAbsolutePath(), String.valueOf(properties.getIterations()),
                     String.valueOf(properties.getCoolings()), String.valueOf(properties.getParameterCost()), pidFile.getAbsolutePath()};
+
 
             learner = runtime.exec(cmds, null, projectDir);
 

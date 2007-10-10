@@ -1,0 +1,45 @@
+<project name="bright" default="dist" basedir=".">
+	<description>Build file for B-Right GUI</description>
+	
+	<property name="src" location="src" />
+	<property name="build" location="build" />
+	<property name="dist" location="dist" />
+	<property name="proj.name" value="bright" />
+	<property name="proj.version" value="0.1" />
+	
+	<path id="project.classpath">
+	  <fileset dir="lib">
+	    <include name="*.jar"/>
+	  </fileset>
+	</path>
+	
+	<target name="clean">
+	  <delete dir="${build}" />
+	  <delete dir="${dist}" />
+	</target>
+	
+	<target name="init">
+	  <mkdir dir="${build}" />
+	  <mkdir dir="${dist}" />
+	</target>
+	
+	<target name="compile" depends="init">
+	  <javac srcdir="${src}" destdir="${build}">
+	    <classpath refid="project.classpath" />
+	  </javac>
+	</target>
+	
+	<manifestclasspath property="jar.classpath"
+			   jarfile="${dist}/${proj.name}-${proj.version}.jar">
+	  <classpath refid="project.classpath" />
+	</manifestclasspath>
+
+	<target name="dist" depends="compile">
+	  <jar jarfile="${dist}/${proj.name}-${proj.version}.jar" basedir="${build}">
+	    <manifest>
+	      <attribute name="Main-Class" value="bright.gui.Bright" />
+	      <attribute name="Class-Path" value="${jar.classpath}" />
+	    </manifest>
+	  </jar>
+	</target>
+</project>

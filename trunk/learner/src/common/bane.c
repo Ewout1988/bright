@@ -321,7 +321,8 @@ bane* bane_create_from_pmx(format* fmt, parent_matrix* pmx){
   return bn;
 }
 
-void propagate_path_add(bane* bn, node* me, int* addend, int new_parent_id){
+void propagate_path_add_down(bane* bn, node* me, int* addend,
+			     int new_parent_id){
   int i;
   int c = -1;
   node* ch = NULL;
@@ -339,10 +340,31 @@ void propagate_path_add(bane* bn, node* me, int* addend, int new_parent_id){
 
   ch = FIRST_CHILD(bn, me, c);
   while(c!=-1) {
-    propagate_path_add(bn, ch, addend, new_parent_id);
+    propagate_path_add_down(bn, ch, addend, new_parent_id);
     ch = NEXT_CHILD(bn, me, c);
   }
+}
 
+/*
+ * FIXME: we could avoid visiting same ancestors
+ */
+void propagate_path_change_up(bane* bn, node* me){
+  int i;
+  int c = -1;
+  int me_i = me - bn->nodes;
+  node* ch = NULL;
+
+  me->offspringcount = 0;
+  for(i=0; i<bn->nodecount; ++i){
+    me->offspringcount += IS_ANCESTOR_OF(bn->nodes+i, me_i);
+  }
+
+  /* and then propagate to parents */
+  ch = FIRST_PARENT(bn, me, c);
+  while(c!=-1) {
+    propagate_path_change_up(bn, ch);
+    ch = NEXT_PARENT(bn, me, c);
+  }
 }
   
 void bane_add_arc(bane* bn, arc* ar){
@@ -352,7 +374,7 @@ void bane_add_arc(bane* bn, arc* ar){
   ADD_CHILD(bn,from,to);
   ADD_PARENT(bn,to,from);
 
-  //propagate_path_add(bn, to, from->path_to_me_count, from->id);
+  //propagate_path_add_down(bn, to, from->path_to_me_count, from->id);
   /*
   fprintf(stderr,"Added arc %d -> %d\n",from->id, to->id);
   node_write(bn,from,stderr);
@@ -363,10 +385,13 @@ void bane_add_arc_complete(bane* bn, arc* ar){
   node* from = bn->nodes + ar->from;
   node* to   = bn->nodes + ar->to;
 
-  propagate_path_add(bn, to, from->path_to_me_count, from->id);
+  propagate_path_add_down(bn, to, from->path_to_me_count, from->id);
+  if (TRACK_OFFSPRING_COUNT)
+    propagate_path_change_up(bn, from);
 }
 
-void propagate_path_del(bane* bn, node* me, int* subend, int old_parent_id){
+void propagate_path_del_down(bane* bn, node* me, int* subend,
+			     int old_parent_id){
   int i;
   int c = -1;
   node* ch = NULL;
@@ -384,7 +409,7 @@ void propagate_path_del(bane* bn, node* me, int* subend, int old_parent_id){
 
   ch = FIRST_CHILD(bn, me, c);
   while(c!=-1) {
-    propagate_path_del(bn, ch, subend, old_parent_id);
+    propagate_path_del_down(bn, ch, subend, old_parent_id);
     ch = NEXT_CHILD(bn, me, c);
   }
 
@@ -397,7 +422,7 @@ void bane_del_arc(bane* bn, arc* ar){
   DEL_CHILD(bn,from,to);
   DEL_PARENT(bn,to,from);
 
-  //propagate_path_del(bn, to, from->path_to_me_count, from->id);
+  //propagate_path_del_down(bn, to, from->path_to_me_count, from->id);
   /*
   fprintf(stderr,"Deleted arc %d -> %d\n",from->id, to->id);
   node_write(bn,from,stderr);
@@ -408,7 +433,9 @@ void bane_del_arc_complete(bane *bn, arc *ar) {
   node *from = bn->nodes + ar->from;
   node *to = bn->nodes + ar->to;
 
-  propagate_path_del(bn, to, from->path_to_me_count, from->id);
+  propagate_path_del_down(bn, to, from->path_to_me_count, from->id);
+  if (TRACK_OFFSPRING_COUNT)
+    propagate_path_change_up(bn, from);
 }
 
 void bane_rev_arc(bane* bn, arc* ar){
@@ -492,6 +519,35 @@ double bane_get_score(bane* bn, double ess, double* scoreboard){
     if(NULL != scoreboard) scoreboard[i] = iscore; 
   }
   return score;
+}
+
+void bane_calc_neighbourhood_sizes(bane *bn, unsigned *type1, unsigned *type2) {
+  int i;
+
+  /*
+   * calculate the size of the neighbourhood, which is all distinct networks
+   * that may be obtained by any the following operations:
+   *
+   * type1: add_arc, del_arc
+   * type2: change_to, change_from
+   */
+  *type1 = *type2 = 0;
+
+  for(i=0; i<bn->nodecount; ++i){
+    node* nodi = bn->nodes + i;
+
+    /* add_arc */
+    *type1 += bn->nodecount - nodi->ancestorcount - nodi->childcount - 1;
+    /* del_arc */
+    *type1 += nodi->childcount;
+
+    /* change_to */
+    *type2 += nodi->childcount *
+      (bn->nodecount - nodi->ancestorcount - nodi->childcount - 1);
+    /* change_from */
+    *type2 += nodi->parentcount *
+      (bn->nodecount - nodi->offspringcount - nodi->parentcount - 1);
+  }
 }
 
 void

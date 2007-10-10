@@ -1,4 +1,5 @@
 #include <math.h>
+#include "banesearch.h"
 #include "err.h"
 #include "forest.h"
 #include "parent_matrix.h"
@@ -237,3 +238,150 @@ int bane_rev_random_arc(bane* bn, arc* ar, int maxtblsize){
   return 0;
 }
 
+int bane_repl_random_to_arc(bane* bn, arc* del_ar, arc* add_ar,
+			    int maxtblsize) {
+  int i;
+
+  for (i = 0; i < 10; ++i) {
+    if (bane_del_random_arc(bn, del_ar, maxtblsize))
+      if (bane_suggest_ranadd_from(bn, bn->nodes + del_ar->from,
+				   add_ar, maxtblsize)) {
+	bane_add_arc(bn, add_ar);
+	return 1;
+      } else
+	bane_add_arc(bn, del_ar);
+    else
+      return 0;
+  }
+
+  return 0;
+}
+
+int bane_repl_random_from_arc(bane* bn, arc* del_ar, arc* add_ar,
+			      int maxtblsize) {
+  int i;
+
+  for (i = 0; i < 10; ++i) {
+    if (bane_del_random_arc(bn, del_ar, maxtblsize))
+      if (bane_suggest_ranadd_to(bn, bn->nodes + del_ar->to,
+				 add_ar, maxtblsize)) {
+	bane_add_arc(bn, add_ar);
+	return 1;
+      } else
+	bane_add_arc(bn, del_ar);
+    else
+      return 0;
+  }
+
+  return 0;
+}
+
+int bane_repl_arc(bane *bn, arc *del_ar, arc *add_ar) {
+  bane_del_arc(bn, del_ar);
+  bane_add_arc(bn, add_ar);
+}
+
+double update_score(bane *bn, enum Operation ch, arc *ar, arc *del_ar,
+		    arc *add_ar, data *dt, double *scoreboard,
+		    score_hashtable *sht, double *from_score,
+		    double *to_score, double ess,
+		    double param_cost,
+		    double current_best_score) {
+  double new_score = current_best_score;
+
+  if (ch < 3) {
+    bane_gather_ss_for_i(bn, dt, ar->to); /* to needs always work */
+    *to_score = bane_get_score_for_i(bn->nodes + ar->to, ess);	
+    *from_score = scoreboard[ar->from]; /* cheap default for from */
+    if (ch == 2) { /* rev - from needs to be calculated */
+      bane_gather_ss_for_i(bn, dt, ar->from);
+      *from_score = bane_get_score_for_i(bn->nodes + ar->from, ess);
+    }
+
+    if (sht) {
+      new_score = current_best_score +  
+	*from_score + *to_score 
+	- scoreboard[ar->from] - scoreboard[ar->to];
+
+
+      /*
+       * param penalty
+       */
+      int fromvalcount = (bn->nodes + ar->from)->valcount;
+      int tovalcount = (bn->nodes + ar->to)->valcount;
+
+      if (ch < 3) {
+	int curto = node_param_count(bn->nodes + ar->to);
+	int prevto = 0;
+
+	int curfrom = 0;
+	int prevfrom = 0;
+
+	switch (ch) {
+	case 0:
+	  prevto = curto / fromvalcount;
+	  break;
+	case 1:
+	  prevto = curto * fromvalcount;
+	  break;
+	case 2:
+	  prevto = curto / fromvalcount;
+
+	  curfrom = node_param_count(bn->nodes + ar->from);
+	  prevfrom = curfrom * tovalcount;
+	}
+
+	new_score -= (curto - prevto + curfrom - prevfrom) * param_cost;
+      }
+
+      score_hashtable_put(sht, bn->pmx->mx, new_score);
+    }
+  } else {
+    double del_to_score, add_to_score;
+
+    /*
+     * a del arc followed by an add arc, we must undo the add_ar to see
+     * what happened.
+     */
+    bane_del_arc(bn, add_ar);
+
+    bane_gather_ss_for_i(bn, dt, del_ar->to); /* to needs always work */
+    del_to_score = bane_get_score_for_i(bn->nodes + del_ar->to, ess);
+
+    if (sht) {
+      int fromvalcount = (bn->nodes + del_ar->from)->valcount;      
+      int curto = node_param_count(bn->nodes + del_ar->to);
+      int prevto = curto * fromvalcount;
+
+      new_score = current_best_score +  
+	del_to_score - scoreboard[del_ar->to]
+	- (curto - prevto) * param_cost;
+      score_hashtable_put(sht, bn->pmx->mx, new_score);
+    }
+
+    bane_add_arc(bn, add_ar);
+
+    bane_gather_ss_for_i(bn, dt, add_ar->to);
+    add_to_score = bane_get_score_for_i(bn->nodes + add_ar->to, ess);
+
+    if (sht) {
+      int fromvalcount = (bn->nodes + add_ar->from)->valcount;      
+      int curto = node_param_count(bn->nodes + add_ar->to);
+      int prevto = curto / fromvalcount;
+
+      new_score = new_score
+	+ add_to_score
+	- (add_ar->to == del_ar->to ?
+	   del_to_score : scoreboard[add_ar->to])
+	- (curto - prevto) * param_cost;
+      score_hashtable_put(sht, bn->pmx->mx, new_score);
+    }
+
+    ar->from = del_ar->to;
+    *from_score = del_to_score;
+    ar->to = add_ar->to;
+    *to_score = add_to_score;
+  }
+
+  return new_score;
+}

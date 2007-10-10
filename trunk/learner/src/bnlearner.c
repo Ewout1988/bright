@@ -16,45 +16,12 @@
 #include "drand48.c"
 #endif
 
-int usr1_set;
-int usr2_set;
-int alrm_set;
-
 double param_cost = 0;
-
-void usr2_handler(int signum) {
-  signal(12,usr2_handler);
-  signum = 0;
-  usr2_set = 1;
-}
-
-void usr1_handler(int signum) {
-  signal(10,usr1_handler);
-  signum = 0;
-  usr1_set = 1;
-}
-
-void alrm_handler(int signum) {
-  signal(14,alrm_handler);
-  signum = 0;
-  alrm_set = 1;
-}
-
-void set_signal_handlers(){
-  usr1_set = 0;
-  usr2_set = 0;
-  alrm_set = 0;
-  signal(10,usr1_handler);
-  signal(12,usr2_handler);
-  signal(14,alrm_handler);
-}
 
 double bane_get_score_param_costs(bane* bn, double ess, double* scoreboard)
 {
   double score = bane_get_score(bn, ess, scoreboard);
-
   score -= bane_param_count(bn) * param_cost;
-
   return score;
 }
 
@@ -106,8 +73,7 @@ void write_report_n_structure(search_stats* st, search_stats* stp,
 
   /* Report second */
 
-  OPENFILE_OR_DIE(fp,reportfilename,"w");
-  
+  OPENFILE_OR_DIE(fp,reportfilename,"w");  
 
   better = (stp->t == 0) ? 
     0 : exp(st->best_score - stp->best_score);
@@ -129,199 +95,6 @@ void write_report_n_structure(search_stats* st, search_stats* stp,
 typedef int (*greedy_change)(bane*, arc*, int);
 typedef void (*greedy_unchange)(bane*, arc*);
 
-static
-void remove_bad_arcs(data* dt, double ess, 
-		     arc* ar, double* scoreboard, score_hashtable* sht,
-		     search_stats* stg){
-
-  int all_removed = 0; 
-  bane* bn = stg->beba;
-
-  bane_gather_full_ss(bn, dt);
-  bane_get_score_param_costs(bn, ess, scoreboard);
-
-  while(!all_removed){
-    all_removed = 1;
-    
-    for(ar->to=0; ar->to<bn->nodecount; ++ar->to){
-      node* nodi = bn->nodes + ar->to;
-      for(ar->from = 0; ar->from<bn->nodecount; ++ar->from){
-	if (IS_PARENT(ar->to,ar->from,bn->pmx)){
-	  double old_score;
-	  double gain = 0;
-
-	  int to_params = node_param_count(bn->nodes + ar->to);
-	  bane_del_arc(bn, ar);
-	  int to_params_diff = node_param_count(bn->nodes + ar->to) - to_params;
-	  if(!score_hashtable_get(sht, bn->pmx->mx, &old_score)) {
-	    bane_gather_ss_for_i(bn, dt, ar->to);
-	    gain = bane_get_score_for_i(nodi,ess) - scoreboard[ar->to]
-	      - to_params_diff * param_cost;
-	    if(gain >= 0) {
-	      bane_del_arc_complete(bn, ar);
-	      scoreboard[ar->to] += gain;
-	      stg->tn_when_best = stg->tn;
-	      stg->best_score += gain;
-	      all_removed = 0;	      
-	    } else {
-	      bane_add_arc(bn, ar);
-	    }
-	    ++ stg->tn;
-	  } else {
-	    bane_add_arc(bn, ar);	  
-	  }
-	}
-      }
-    }
-  }
-}
-
-static int bane_repl_random_to_arc(bane* bn, arc* del_ar, arc* add_ar,
-				   int maxtblsize) {
-  int i;
-
-  for (i = 0; i < 10; ++i) {
-    if (bane_del_random_arc(bn, del_ar, maxtblsize))
-      if (bane_suggest_ranadd_from(bn, bn->nodes + del_ar->from,
-				   add_ar, maxtblsize)) {
-	bane_add_arc(bn, add_ar);
-	return 1;
-      } else
-	bane_add_arc(bn, del_ar);
-    else
-      return 0;
-  }
-
-  return 0;
-}
-
-static int bane_repl_random_from_arc(bane* bn, arc* del_ar, arc* add_ar,
-				     int maxtblsize) {
-  int i;
-
-  for (i = 0; i < 10; ++i) {
-    if (bane_del_random_arc(bn, del_ar, maxtblsize))
-      if (bane_suggest_ranadd_to(bn, bn->nodes + del_ar->to,
-				 add_ar, maxtblsize)) {
-	bane_add_arc(bn, add_ar);
-	return 1;
-      } else
-	bane_add_arc(bn, del_ar);
-    else
-      return 0;
-  }
-
-  return 0;
-}
-
-static int bane_repl_arc(bane *bn, arc *del_ar, arc *add_ar) {
-  bane_del_arc(bn, del_ar);
-  bane_add_arc(bn, add_ar);
-}
-
-static double compute_score(bane *bn, int ch, arc *ar, arc *del_ar,
-			    arc *add_ar, data *dt, double *scoreboard,
-			    score_hashtable *sht, double *from_score,
-			    double *to_score, double ess,
-			    double current_best_score) {
-  double new_score = current_best_score;
-
-  if (ch < 3) {
-    bane_gather_ss_for_i(bn, dt, ar->to); /* to needs always work */
-    *to_score = bane_get_score_for_i(bn->nodes + ar->to, ess);	
-    *from_score = scoreboard[ar->from]; /* cheap default for from */
-    if (ch == 2) { /* rev - from needs to be calculated */
-      bane_gather_ss_for_i(bn, dt, ar->from);
-      *from_score = bane_get_score_for_i(bn->nodes + ar->from, ess);
-    }
-
-    if (sht) {
-      new_score = current_best_score +  
-	*from_score + *to_score 
-	- scoreboard[ar->from] - scoreboard[ar->to];
-
-
-      /*
-       * param penalty
-       */
-      int fromvalcount = (bn->nodes + ar->from)->valcount;
-      int tovalcount = (bn->nodes + ar->to)->valcount;
-
-      if (ch < 3) {
-	int curto = node_param_count(bn->nodes + ar->to);
-	int prevto = 0;
-
-	int curfrom = 0;
-	int prevfrom = 0;
-
-	switch (ch) {
-	case 0:
-	  prevto = curto / fromvalcount;
-	  break;
-	case 1:
-	  prevto = curto * fromvalcount;
-	  break;
-	case 2:
-	  prevto = curto / fromvalcount;
-
-	  curfrom = node_param_count(bn->nodes + ar->from);
-	  prevfrom = curfrom * tovalcount;
-	}
-
-	new_score -= (curto - prevto + curfrom - prevfrom) * param_cost;
-      }
-
-      score_hashtable_put(sht, bn->pmx->mx, new_score);
-    }
-  } else {
-    double del_to_score, add_to_score;
-
-    /*
-     * a del arc followed by an add arc, we must undo the add_ar to see
-     * what happened.
-     */
-    bane_del_arc(bn, add_ar);
-
-    bane_gather_ss_for_i(bn, dt, del_ar->to); /* to needs always work */
-    del_to_score = bane_get_score_for_i(bn->nodes + del_ar->to, ess);
-
-    if (sht) {
-      int fromvalcount = (bn->nodes + del_ar->from)->valcount;      
-      int curto = node_param_count(bn->nodes + del_ar->to);
-      int prevto = curto * fromvalcount;
-
-      new_score = current_best_score +  
-	del_to_score - scoreboard[del_ar->to]
-	- (curto - prevto) * param_cost;
-      score_hashtable_put(sht, bn->pmx->mx, new_score);
-    }
-
-    bane_add_arc(bn, add_ar);
-
-    bane_gather_ss_for_i(bn, dt, add_ar->to);
-    add_to_score = bane_get_score_for_i(bn->nodes + add_ar->to, ess);
-
-    if (sht) {
-      int fromvalcount = (bn->nodes + add_ar->from)->valcount;      
-      int curto = node_param_count(bn->nodes + add_ar->to);
-      int prevto = curto / fromvalcount;
-
-      new_score = new_score
-	+ add_to_score
-	- (add_ar->to == del_ar->to ?
-	   del_to_score : scoreboard[add_ar->to])
-	- (curto - prevto) * param_cost;
-      score_hashtable_put(sht, bn->pmx->mx, new_score);
-    }
-
-    ar->from = del_ar->to;
-    *from_score = del_to_score;
-    ar->to = add_ar->to;
-    *to_score = add_to_score;
-  }
-
-  return new_score;
-}
 
 void search(format *fmt, data *dt, double ess, int maxtblsize,
 	    char *reportfilename, char *structfilename,
@@ -469,7 +242,7 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 
   T = 1; // start from 1, and go up until accept ratio > 0.6
 
-  while (!usr2_set) {
+  for(;;) {
     int n_accepts = 0;
     int n_rejects = 0;
     int n_eless = 0;
@@ -479,7 +252,6 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
     double new_score;
 
     for (i = 0; i < (calibrating ? 1000 : iterations); ++i) {
-
       /*
        * take a step
        */
@@ -512,10 +284,10 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
       if (score_hashtable_get(sht, bn->pmx->mx, &new_score)) {
 	hthit = 1;
       } else {
-	new_score = compute_score(bn, ch, ar, del_ar,
-				  add_ar, dt, scoreboard,
-				  sht, &from_score, &to_score,
-				  ess, stl->best_score);
+	new_score = update_score(bn, ch, ar, del_ar,
+				 add_ar, dt, scoreboard,
+				 sht, &from_score, &to_score,
+				 ess, param_cost, stl->best_score);
 	if (ch < 3) {
 	  ++ stl->tn;
 	  ++ stg->tn;
@@ -548,8 +320,13 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 	stl->beba = bn;
 
 	if (hthit) {
-	  compute_score(bn, ch, ar, del_ar, add_ar, dt, scoreboard, NULL,
-			&from_score, &to_score, ess, score_check);
+	  /*
+	   * although we know the score of the entire network, we also
+	   * need to update the scoreboard, using from_score and
+	   * to_score
+	   */
+	  update_score(bn, ch, ar, del_ar, add_ar, dt, scoreboard, NULL,
+		       &from_score, &to_score, ess, param_cost, score_check);
 	}
 
 	if (ch < 3)
@@ -585,18 +362,6 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 	  sauch[ch](bn, ar);
 	else
 	  bane_repl_arc(bn, add_ar, del_ar);
-      }
-
-      if (usr1_set || alrm_set) {
-	usr1_set = 0;
-	if (alrm_set) {
-	  remove_bad_arcs(dt, ess, ar, scoreboard, sht, stg);
-	}
-	write_report_n_structure(stg, stp, reportfilename, structfilename,
-				 Titerations);
-	if (alrm_set) {
-	  usr2_set = 1;
-	}
       }
     }
 
@@ -679,8 +444,6 @@ int main(int argc, char* argv[]){
 	    argv[0]);
     exit(-1);
   }
-
-  set_signal_handlers();
 
   fclose(stdin);
   fclose(stdout);
