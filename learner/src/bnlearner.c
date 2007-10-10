@@ -92,59 +92,22 @@ void write_report_n_structure(search_stats* st, search_stats* stp,
 
 }
 
-typedef int (*greedy_change)(bane*, arc*, int);
-typedef void (*greedy_unchange)(bane*, arc*);
-
-
-void search(format *fmt, data *dt, double ess, int maxtblsize,
-	    char *reportfilename, char *structfilename,
-	    int iterations, int coolings) {
-  search_stats* stg = NULL; /* global search stats */
-  search_stats* stl; /* search stats for current round - local*/
-  search_stats* stp; /* search stats at previous report */ 
-
-  double* scoreboard;
-  score_hashtable* sht;
-
-  int keysize;
-  int items_per_pos;
-  arc* ar;
-
-  bane* bn = NULL;
-
-  double T0, T;
-  double mu_T = 1.01; 
-
-  int Titerations = 0;
-
-  arc* del_ar;
-  arc* add_ar;
-
-  greedy_change sach[3];
-  greedy_unchange sauch[3];
-  greedy_unchange sacmpl[3];
-
-  MECALL(ar, 1, arc);
-
+bane *open_or_create(char *structfilename, format *fmt, data *dt, double ess)
+{
   /*
     Open struct file if it already exists and take that struct as
     the current best.
    */
-  {
-    struct stat *buf;
-    FILE *fp = fopen(structfilename, "r");
+  struct stat *buf;
+  FILE *fp = fopen(structfilename, "r");
+  arc ar;
+  bane *bn;
 
-    if (fp) {
-      /* fprintf(stderr, "Reading existing best struct from %s\n",
-      	      structfilename); */
-      bn = bane_create_from_format(fmt);
-      bane_read_structure(bn,fp);
-      fclose(fp);
-    }
-  }
-
-  if (!bn) {
-    /* Take first forest candidate */
+  if (fp) {
+    bn = bane_create_from_format(fmt);
+    bane_read_structure(bn,fp);
+    fclose(fp);
+  } else  {
     int r;
     bane* bnf = bane_create_forest(fmt,ess,dt);
     int* roots;
@@ -159,16 +122,16 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 	roots[r] = roots[rootpos];
 	roots[rootpos] = r;
 	++ rootpos;
-	}
+      }
     }
 
     bn = bane_copy(bnf);
     if (rootpos < bnf->nodecount) {
-      for (r=roots[rootpos]; bn->nodes[r].parentcount > 0; r=ar->from) {
-	ar->from = bn->nodes[r].first_parent;
-	ar->to = r;
-	bane_rev_arc(bn,ar);
-	bane_rev_arc_complete(bn,ar);
+      for (r=roots[rootpos]; bn->nodes[r].parentcount > 0; r=ar.from) {
+	ar.from = bn->nodes[r].first_parent;
+	ar.to = r;
+	bane_rev_arc(bn,&ar);
+	bane_rev_arc_complete(bn,&ar);
       }
     }
 
@@ -176,30 +139,58 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
     bane_free(bnf);
   }
 
+  return bn;
+}
+
+typedef int (*greedy_change)(bane*, arc*, int);
+typedef void (*greedy_unchange)(bane*, arc*);
+
+void search(format *fmt, data *dt, double ess, int maxtblsize,
+	    char *reportfilename, char *structfilename,
+	    int iterations, int coolings) {
+  search_stats* stg; /* global search stats */
+  search_stats* stl; /* search stats for current round - local*/
+  search_stats* stp; /* search stats at previous report */ 
+
+  double* scoreboard;
+  score_hashtable* sht;
+
+  arc* ar;
+  arc* del_ar;
+  arc* add_ar;
+
+  greedy_change sach[3];
+  greedy_unchange sauch[3];
+  greedy_unchange sacmpl[3];
+
+  double T0, T;
+  double mu_T = 1.01;
+  int Titerations = 0;
+
+  bane* bn = open_or_create(structfilename, fmt, dt, ess);
+
   stg = search_stats_create(bn);
   stl = search_stats_create(bn);
   stp = search_stats_create(bn);
 
-  bane_gather_full_ss(stg->beba, dt);
-  stg->best_score = bane_get_score_param_costs(stg->beba, ess, NULL);
+  sht = create_hashtable(500000, bn);
 
   bane_free(bn);
 
+  /*
+   * set as global best
+   */
+  bane_gather_full_ss(stg->beba, dt);
+  stg->best_score = bane_get_score_param_costs(stg->beba, ess, NULL);
+
+  /*
+   * set as local best, with score board
+   */
   MECALL(scoreboard, stl->beba->nodecount, double);
 
-  keysize = stl->beba->pmx->m * stl->beba->pmx->one_dim_size;
-  items_per_pos = score_hashtable_items_for_mem(500000, keysize);
-  if(items_per_pos < 1) items_per_pos = 1;
-  if(items_per_pos > 10) items_per_pos = 10;
-  sht = score_hashtable_create(keysize, items_per_pos);
-
   bane_gather_full_ss(stl->beba, dt);
-  stl->best_score = 
-    bane_get_score_param_costs(stl->beba, ess, scoreboard);
-
-  if (stg->best_score == 0)
-    stg->best_score = stl->best_score;
-  score_hashtable_put(sht,stl->beba->pmx->mx, stg->best_score); 
+  stl->best_score = bane_get_score_param_costs(stl->beba, ess, scoreboard);
+  score_hashtable_put(sht,stl->beba->pmx->mx, stl->best_score); 
   stl->hit_rate_rwa = 0;
 
   ++stl->t;
@@ -223,6 +214,7 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
   sauch[1] = bane_add_arc;
   sauch[2] = bane_rev_arc;
 
+  MECALL(ar, 1, arc);
   MECALL(del_ar, 1, arc);
   MECALL(add_ar, 1, arc);
 
