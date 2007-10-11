@@ -190,10 +190,10 @@ static void propose_step(bane *current, bane *bn, step_aux_info *sinfo,
   sinfo->ch = ch;
 }
 
-double calc_score(bane *bn, data *dt, double current_score,
-		  score_hashtable *sht,
-		  step_aux_info *sinfo, double *scoreboard,
-		  double ess, double param_cost)
+static double calc_score(bane *bn, data *dt, double current_score,
+			 score_hashtable *sht,
+			 step_aux_info *sinfo, double *scoreboard,
+			 double ess, double param_cost)
 {
   double new_score;
 
@@ -210,9 +210,9 @@ double calc_score(bane *bn, data *dt, double current_score,
   return new_score;
 }
 
-void complete_step(bane *bn, data *dt, double current_score,
-		   double *scoreboard, step_aux_info *sinfo,
-		   double ess, double param_cost)
+static void complete_step(bane *bn, data *dt, double current_score,
+			  double *scoreboard, step_aux_info *sinfo,
+			  double ess, double param_cost)
 {
   if (sinfo->hthit) {
     /*
@@ -229,8 +229,8 @@ void complete_step(bane *bn, data *dt, double current_score,
   scoreboard[sinfo->ar.to] = sinfo->to_score;
 }
 
-double calc_mh(bane *bn, double current_score, double new_score,
-	       step_aux_info *sinfo, unsigned *nb_size)
+static double calc_mh(bane *bn, double current_score, double new_score,
+		      step_aux_info *sinfo, unsigned *nb_size)
 {
   double hastings_ratio;
 
@@ -260,8 +260,8 @@ double calc_mh(bane *bn, double current_score, double new_score,
   return hastings_ratio * exp(new_score - current_score);
 }
 
-void sample(format *fmt, data *dt, double ess, int maxtblsize,
-	    int chain_length, int sample_interval)
+static void sample(format *fmt, data *dt, double ess, int maxtblsize,
+		   int chain_length, int sample_interval)
 {
   double* scoreboard;
   score_hashtable* sht;
