@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <math.h>
-#include <signal.h>
 #include <errno.h>
 #include <unistd.h>
 #include "err.h"
@@ -279,9 +278,6 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 	}
       }
 
-      /*
-       * new_E: new_score; best_E: stg->score
-       */
       accept = new_score > stl->best_score;
 
       if (accept) {

@@ -521,35 +521,6 @@ double bane_get_score(bane* bn, double ess, double* scoreboard){
   return score;
 }
 
-void bane_calc_neighbourhood_sizes(bane *bn, unsigned *type1, unsigned *type2) {
-  int i;
-
-  /*
-   * calculate the size of the neighbourhood, which is all distinct networks
-   * that may be obtained by any the following operations:
-   *
-   * type1: add_arc, del_arc
-   * type2: change_to, change_from
-   */
-  *type1 = *type2 = 0;
-
-  for(i=0; i<bn->nodecount; ++i){
-    node* nodi = bn->nodes + i;
-
-    /* add_arc */
-    *type1 += bn->nodecount - nodi->ancestorcount - nodi->childcount - 1;
-    /* del_arc */
-    *type1 += nodi->childcount;
-
-    /* change_to */
-    *type2 += nodi->childcount *
-      (bn->nodecount - nodi->ancestorcount - nodi->childcount - 1);
-    /* change_from */
-    *type2 += nodi->parentcount *
-      (bn->nodecount - nodi->offspringcount - nodi->parentcount - 1);
-  }
-}
-
 void
 bane_free(bane* bn){
   int i;

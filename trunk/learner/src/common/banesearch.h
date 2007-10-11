@@ -31,8 +31,22 @@ bane_repl_random_to_arc(bane* bn, arc* del_ar, arc* add_ar, int maxtblsize);
 extern int
 bane_repl_random_from_arc(bane* bn, arc* del_ar, arc* add_ar, int maxtblsize);
 
-extern int
+extern void
 bane_repl_arc(bane *bn, arc *del_ar, arc *add_ar);
+
+extern int
+bane_add_arc_i_from(bane *bn, node *from, arc *ar, int i, int maxtblsize);
+
+extern int
+bane_del_arc_i_from(bane *bn, node *from, arc *ar, int i);
+
+extern int
+bane_change_arc_dst(bane *bn, node *from, arc *del_ar, arc *add_ar,
+		    int arc_i, int dst_i, int maxtblsize);
+
+extern int
+bane_change_arc_src(bane *bn, node *to, arc *del_ar, arc *add_ar,
+		    int arc_i, int src_i, int maxtblsize);
 
 enum Operation { Add = 0, Del = 1, Rev = 2, ChangeTo = 3, ChangeFrom = 4 };
 
@@ -66,7 +80,17 @@ update_score(bane *bn, enum Operation ch, arc *ar, arc *del_ar,
 	     double *to_score, double ess,
 	     double param_cost,
 	     double current_best_score);
-  
+
+/*
+ * calculate the size of the neighbourhood, which is all distinct networks
+ * that may be obtained by any the following operations:
+ *
+ * type1: add_arc, del_arc
+ * type2: change_to, change_from
+ */
+extern void
+bane_calc_neighbourhood_sizes(bane *bn, unsigned *nbv);
+
 #endif
 
 
