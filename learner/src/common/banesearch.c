@@ -18,9 +18,9 @@ int bane_suggest_ranadd_from(bane* bn, node* from, arc* ar, int maxtblsize) {
   t = rand() % target_count;    
   i = 0; /* count upto t */
   for(to_id=0; ; ++to_id){
-    if((to_id == from->id)                    /* self loop */
+    if((to_id == from->id)                     /* self loop */
        || (IS_CHILD(from->id, to_id, bn->pmx)) /* arc to child */ 
-       || (IS_ANCESTOR_OF(from, to_id)))      /* arc to ancestor */
+       || (IS_ANCESTOR_OF(from, to_id)))       /* arc to ancestor */
       continue;
     if(i == t) break;
     ++i;
@@ -39,7 +39,7 @@ int bane_suggest_ranadd_from(bane* bn, node* from, arc* ar, int maxtblsize) {
 }
 
 int bane_add_random_arc_from(bane* bn, node* from, arc* ar, int maxtblsize) {
-  if(bane_suggest_ranadd_from(bn,from,ar,maxtblsize)){
+  if (bane_suggest_ranadd_from(bn,from,ar,maxtblsize)) {
     bane_add_arc(bn, ar);
     return 1;
   }
@@ -96,7 +96,7 @@ int bane_suggest_ranadd_to(bane *bn, node *to, arc *ar, int maxtblsize) {
 }
 
 int bane_add_random_arc_to(bane* bn, node* to, arc* ar, int maxtblsize) {
-  if(bane_suggest_ranadd_to(bn,to,ar,maxtblsize)){
+  if (bane_suggest_ranadd_to(bn,to,ar,maxtblsize)) {
     bane_add_arc(bn, ar);
     return 1;
   }
@@ -276,7 +276,7 @@ int bane_repl_random_from_arc(bane* bn, arc* del_ar, arc* add_ar,
   return 0;
 }
 
-int bane_repl_arc(bane *bn, arc *del_ar, arc *add_ar) {
+void bane_repl_arc(bane *bn, arc *del_ar, arc *add_ar) {
   bane_del_arc(bn, del_ar);
   bane_add_arc(bn, add_ar);
 }
@@ -329,6 +329,8 @@ double update_score(bane *bn, enum Operation ch, arc *ar, arc *del_ar,
 
 	  curfrom = node_param_count(bn->nodes + ar->from);
 	  prevfrom = curfrom * tovalcount;
+	default:
+	  ;/* unreachable */	  
 	}
 
 	new_score -= (curto - prevto + curfrom - prevfrom) * param_cost;
@@ -345,7 +347,7 @@ double update_score(bane *bn, enum Operation ch, arc *ar, arc *del_ar,
      */
     bane_del_arc(bn, add_ar);
 
-    bane_gather_ss_for_i(bn, dt, del_ar->to); /* to needs always work */
+    bane_gather_ss_for_i(bn, dt, del_ar->to);
     del_to_score = bane_get_score_for_i(bn->nodes + del_ar->to, ess);
 
     if (sht) {
@@ -384,4 +386,144 @@ double update_score(bane *bn, enum Operation ch, arc *ar, arc *del_ar,
   }
 
   return new_score;
+}
+
+void bane_calc_neighbourhood_sizes(bane *bn, unsigned *nbv)
+{
+  int i;
+
+  for (i = 0; i < 5; ++i)
+    nbv[i] = 0;
+
+  for (i = 0; i < bn->nodecount; ++i) {
+    node* nodi = bn->nodes + i;
+
+    /* add_arc */
+    nbv[Add] += bn->nodecount - nodi->ancestorcount - nodi->childcount - 1;
+    /* del_arc */
+    nbv[Del] += nodi->childcount;
+
+    /* change_to */
+    nbv[ChangeTo] += nodi->childcount *
+      (bn->nodecount - nodi->ancestorcount - nodi->childcount - 1);
+    /* change_from */
+    nbv[ChangeFrom] += nodi->parentcount *
+      (bn->nodecount - nodi->offspringcount - nodi->parentcount - 1);
+  }
+}
+
+int bane_add_arc_i_from(bane *bn, node *from, arc *ar, int t, int maxtblsize)
+{
+  int to_id = -1;
+  node* to = NULL;
+  int i;
+
+  i = 0; /* count upto t */
+  for (to_id = 0; ; ++to_id) {
+    if ((to_id == from->id)                    /* self loop */
+       || (IS_CHILD(from->id, to_id, bn->pmx)) /* arc to child */ 
+       || (IS_ANCESTOR_OF(from, to_id)))      /* arc to ancestor */
+      continue;
+    if (i == t) break;
+    ++i;
+  }
+
+  to = bn->nodes + to_id;
+
+  if (to->pcc * from->valcount * to->valcount <= maxtblsize) {
+    /* Complexity constraint satisfied */
+    ar->to = to_id;
+    ar->from = from->id;
+
+    bane_add_arc(bn, ar);
+    bane_add_arc_complete(bn, ar);
+
+    return 1;
+  } else
+    return 0;
+}
+
+int bane_add_arc_i_to(bane *bn, node *to, arc *ar, int t, int maxtblsize)
+{
+  int from_id = -1;
+  node* from = NULL;
+  int i;
+
+  i = 0; /* count upto t */
+  for (from_id = 0; ; ++from_id) {
+    if ((from_id == to->id)                    /* self loop */
+       || (IS_CHILD(from_id, to->id, bn->pmx)) /* arc from parent */ 
+       || (IS_ANCESTOR_OF(bn->nodes + from_id, to->id))) /* arc from ancestor */
+      continue;
+    if (i == t) break;
+    ++i;
+  }
+
+  from = bn->nodes + from_id;
+
+  if (to->pcc * from->valcount * to->valcount <= maxtblsize) {
+    /* Complexity constraint satisfied */
+    ar->to = to->id;
+    ar->from = from->id;
+
+    bane_add_arc(bn, ar);
+    bane_add_arc_complete(bn, ar);
+
+    return 1;
+  } else
+    return 0;
+}
+
+int bane_del_arc_i_from(bane *bn, node *from, arc *ar, int t)
+{
+  int c, i;  
+  node* to;
+
+  to = FIRST_CHILD(bn,from,c);
+  for (i = 0; i < t; ++i){
+    to = NEXT_CHILD(bn, from, c);
+  }
+
+  ar->to = to->id;
+  ar->from = from->id;
+
+  bane_del_arc(bn, ar);
+  bane_del_arc_complete(bn, ar);
+
+  return 1;  
+}
+
+int bane_del_arc_i_to(bane *bn, node *to, arc *ar, int t)
+{
+  int c, i;
+  node* from;
+
+  from = FIRST_PARENT(bn, to, c);
+  for (i = 0; i < t; ++i){
+    from = NEXT_PARENT(bn, to, c);
+  }
+
+  ar->to = to->id;
+  ar->from = from->id;
+
+  bane_del_arc(bn, ar);
+  bane_del_arc_complete(bn, ar);
+
+  return 1;  
+}
+
+int bane_change_arc_dst(bane *bn, node *from, arc *del_ar, arc *add_ar,
+			int arc_i, int dst_i, int maxtblsize)
+{
+  bane_del_arc_i_from(bn, from, del_ar, arc_i);
+
+  return bane_add_arc_i_from(bn, from, add_ar, dst_i, maxtblsize);
+}
+
+int bane_change_arc_src(bane *bn, node *to, arc *del_ar, arc *add_ar,
+			int arc_i, int src_i, int maxtblsize)
+{
+  bane_del_arc_i_to(bn, to, del_ar, arc_i);
+
+  return bane_add_arc_i_to(bn, to, add_ar, src_i, maxtblsize);
 }

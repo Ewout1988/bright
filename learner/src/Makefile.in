@@ -140,6 +140,7 @@ arcweights \
 bflearner \
 bn_contd_learner \
 bnlearner \
+bnmcmc \
 bnpredict \
 modeleval \
 str_n_dat2sst \
@@ -153,6 +154,7 @@ arcweights_LDADD = ./common/libbaywaycommon.la
 bflearner_LDADD = ./common/libbaywaycommon.la
 bn_contd_learner_LDADD = ./common/libbaywaycommon.la
 bnlearner_LDADD = ./common/libbaywaycommon.la
+bnmcmc_LDADD = ./common/libbaywaycommon.la
 bnpredict_LDADD = ./common/libbaywaycommon.la
 modeleval_LDADD = ./common/libbaywaycommon.la
 str_n_dat2sst_LDADD = ./common/libbaywaycommon.la
@@ -163,9 +165,9 @@ ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 mkinstalldirs = $(SHELL) $(top_srcdir)/config/mkinstalldirs
 CONFIG_CLEAN_FILES =
 bin_PROGRAMS = arcweights$(EXEEXT) bflearner$(EXEEXT) \
-	bn_contd_learner$(EXEEXT) bnlearner$(EXEEXT) bnpredict$(EXEEXT) \
-	modeleval$(EXEEXT) str_n_dat2sst$(EXEEXT) trim$(EXEEXT) \
-	remove_edge$(EXEEXT)
+	bn_contd_learner$(EXEEXT) bnlearner$(EXEEXT) bnmcmc$(EXEEXT) \
+	bnpredict$(EXEEXT) modeleval$(EXEEXT) str_n_dat2sst$(EXEEXT) \
+	trim$(EXEEXT) remove_edge$(EXEEXT)
 PROGRAMS = $(bin_PROGRAMS)
 
 arcweights_SOURCES = arcweights.c
@@ -184,6 +186,10 @@ bnlearner_SOURCES = bnlearner.c
 bnlearner_OBJECTS = bnlearner.$(OBJEXT)
 bnlearner_DEPENDENCIES = ./common/libbaywaycommon.la
 bnlearner_LDFLAGS =
+bnmcmc_SOURCES = bnmcmc.c
+bnmcmc_OBJECTS = bnmcmc.$(OBJEXT)
+bnmcmc_DEPENDENCIES = ./common/libbaywaycommon.la
+bnmcmc_LDFLAGS =
 bnpredict_SOURCES = bnpredict.c
 bnpredict_OBJECTS = bnpredict.$(OBJEXT)
 bnpredict_DEPENDENCIES = ./common/libbaywaycommon.la
@@ -211,8 +217,9 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/arcweights.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/bflearner.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/bn_contd_learner.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/bnlearner.Po ./$(DEPDIR)/bnpredict.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/modeleval.Po ./$(DEPDIR)/remove_edge.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/bnlearner.Po ./$(DEPDIR)/bnmcmc.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/bnpredict.Po ./$(DEPDIR)/modeleval.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/remove_edge.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/str_n_dat2sst.Po ./$(DEPDIR)/trim.Po
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
@@ -222,7 +229,8 @@ CCLD = $(CC)
 LINK = $(LIBTOOL) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
 	$(AM_LDFLAGS) $(LDFLAGS) -o $@
 DIST_SOURCES = arcweights.c bflearner.c bn_contd_learner.c bnlearner.c \
-	bnpredict.c modeleval.c remove_edge.c str_n_dat2sst.c trim.c
+	bnmcmc.c bnpredict.c modeleval.c remove_edge.c str_n_dat2sst.c \
+	trim.c
 
 RECURSIVE_TARGETS = info-recursive dvi-recursive pdf-recursive \
 	ps-recursive install-info-recursive uninstall-info-recursive \
@@ -231,7 +239,7 @@ RECURSIVE_TARGETS = info-recursive dvi-recursive pdf-recursive \
 	check-recursive installcheck-recursive
 DIST_COMMON = $(srcdir)/Makefile.in Makefile.am
 DIST_SUBDIRS = $(SUBDIRS)
-SOURCES = arcweights.c bflearner.c bn_contd_learner.c bnlearner.c bnpredict.c modeleval.c remove_edge.c str_n_dat2sst.c trim.c
+SOURCES = arcweights.c bflearner.c bn_contd_learner.c bnlearner.c bnmcmc.c bnpredict.c modeleval.c remove_edge.c str_n_dat2sst.c trim.c
 
 all: all-recursive
 
@@ -283,6 +291,9 @@ bn_contd_learner$(EXEEXT): $(bn_contd_learner_OBJECTS) $(bn_contd_learner_DEPEND
 bnlearner$(EXEEXT): $(bnlearner_OBJECTS) $(bnlearner_DEPENDENCIES) 
 	@rm -f bnlearner$(EXEEXT)
 	$(LINK) $(bnlearner_LDFLAGS) $(bnlearner_OBJECTS) $(bnlearner_LDADD) $(LIBS)
+bnmcmc$(EXEEXT): $(bnmcmc_OBJECTS) $(bnmcmc_DEPENDENCIES) 
+	@rm -f bnmcmc$(EXEEXT)
+	$(LINK) $(bnmcmc_LDFLAGS) $(bnmcmc_OBJECTS) $(bnmcmc_LDADD) $(LIBS)
 bnpredict$(EXEEXT): $(bnpredict_OBJECTS) $(bnpredict_DEPENDENCIES) 
 	@rm -f bnpredict$(EXEEXT)
 	$(LINK) $(bnpredict_LDFLAGS) $(bnpredict_OBJECTS) $(bnpredict_LDADD) $(LIBS)
@@ -309,6 +320,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/bflearner.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/bn_contd_learner.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/bnlearner.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/bnmcmc.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/bnpredict.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/modeleval.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/remove_edge.Po@am__quote@
