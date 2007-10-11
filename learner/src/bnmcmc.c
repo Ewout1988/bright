@@ -131,6 +131,135 @@ static int bane_change_random_from(bane *bn, arc *del_ar, arc *add_ar,
   assert(0);
 }
 
+typedef struct step_aux_info
+{
+  int ch;
+  arc ar, del_ar, add_ar;
+  double from_score, to_score;
+  unsigned *new_nb_size;
+  int hthit;
+} step_aux_info;
+
+static void propose_step(bane *current, bane *bn, step_aux_info *sinfo,
+			 unsigned *nb_size, int maxtblsize)
+{
+  int ch;
+
+  bane_assign(bn, current);
+
+  for (;;) {
+    /*
+     * propose and apply a step to bn
+     */
+    ch = rand() % 5;
+
+    if (ch != Rev && nb_size[ch] == 0)
+      continue;
+
+    switch (ch) {
+    case Add:
+      ch = bane_change_random_add(bn, &sinfo->ar, nb_size[ch], maxtblsize);
+      break;
+    case Del:
+      ch = bane_change_random_del(bn, &sinfo->ar, nb_size[ch], maxtblsize);
+      break;
+    case Rev:
+      if (!bane_rev_random_arc(bn, &sinfo->ar, maxtblsize))
+	continue; /* could not revert any edge, try another Op */
+      else
+	bane_rev_arc_complete(bn, &sinfo->ar);
+      break;
+    case ChangeTo:
+      ch = bane_change_random_to(bn, &sinfo->del_ar, &sinfo->add_ar,
+				 nb_size[ch],
+				 maxtblsize);
+      break;
+    case ChangeFrom:
+      ch = bane_change_random_from(bn, &sinfo->del_ar, &sinfo->add_ar,
+				   nb_size[ch],
+				   maxtblsize);
+      break;
+    }
+
+    if (ch == -1)
+      bane_assign(bn, current);
+    else
+      break;
+  }
+
+  sinfo->ch = ch;
+}
+
+double calc_score(bane *bn, data *dt, double current_score,
+		  score_hashtable *sht,
+		  step_aux_info *sinfo, double *scoreboard,
+		  double ess, double param_cost)
+{
+  double new_score;
+
+  sinfo->hthit = 0;
+
+  if (score_hashtable_get(sht, bn->pmx->mx, &new_score))
+    sinfo->hthit = 1;
+  else
+    new_score = update_score(bn, sinfo->ch, &sinfo->ar, &sinfo->del_ar,
+			     &sinfo->add_ar, dt, scoreboard,
+			     sht, &sinfo->from_score, &sinfo->to_score,
+			     ess, param_cost, current_score);
+
+  return new_score;
+}
+
+void complete_step(bane *bn, data *dt, double current_score,
+		   double *scoreboard, step_aux_info *sinfo,
+		   double ess, double param_cost)
+{
+  if (sinfo->hthit) {
+    /*
+     * although we know the score of the entire network, we also
+     * need to update the scoreboard, and thus calculate from_score
+     * and to_score
+     */
+    update_score(bn, sinfo->ch, &sinfo->ar, &sinfo->del_ar, &sinfo->add_ar,
+		 dt, scoreboard, NULL, &sinfo->from_score, &sinfo->to_score,
+		 ess, param_cost, current_score); 
+  }
+
+  scoreboard[sinfo->ar.from] = sinfo->from_score;
+  scoreboard[sinfo->ar.to] = sinfo->to_score;
+}
+
+double calc_mh(bane *bn, double current_score, double new_score,
+	       step_aux_info *sinfo, unsigned *nb_size)
+{
+  double hastings_ratio;
+
+  bane_calc_neighbourhood_sizes(bn, sinfo->new_nb_size);
+
+  switch (sinfo->ch) {
+  case Add:
+    hastings_ratio
+      = (double)nb_size[Add] / sinfo->new_nb_size[Del];
+    break;
+  case Del:
+    hastings_ratio
+      = (double)nb_size[Del] / sinfo->new_nb_size[Add];
+    break;
+  case Rev:
+    hastings_ratio = 1.;
+    break;
+  case ChangeTo:
+    hastings_ratio
+      = (double)nb_size[ChangeTo] / sinfo->new_nb_size[ChangeTo];
+    break;
+  case ChangeFrom:
+    hastings_ratio
+      = (double)nb_size[ChangeFrom] / sinfo->new_nb_size[ChangeFrom];
+  }
+
+  return hastings_ratio * exp(new_score - current_score);
+}
+
 void sample(format *fmt, data *dt, double ess, int maxtblsize,
 	    int chain_length, int sample_interval)
 {
@@ -142,124 +271,52 @@ void sample(format *fmt, data *dt, double ess, int maxtblsize,
   arc* add_ar;
 
   double current_score, max_score;
-  bane *bn, *current;
+  bane *proposal, *current;
 
   int iteration;
   unsigned *nb_size;
-  unsigned *new_nb_size;
+
+  struct step_aux_info sinfo;
 
   int n_accepts = 0;
   int n_rejects = 0;
   int n_eless = 0;
 
-  bn = bane_create_from_format(fmt);
+  proposal = bane_create_from_format(fmt);
   current = bane_create_from_format(fmt);
 
   sht = create_hashtable(500000, current);
 
-  /*
-   * set as local best, with score board
-   */
-  MECALL(scoreboard, bn->nodecount, double);
+  MECALL(scoreboard, current->nodecount, double);
   MECALL(nb_size, 5, unsigned);
-  MECALL(new_nb_size, 5, unsigned);
+  MECALL(sinfo.new_nb_size, 5, unsigned);
 
   bane_gather_full_ss(current, dt);
   current_score = bane_get_score_param_costs(current, ess, scoreboard);
   score_hashtable_put(sht, current->pmx->mx, current_score); 
-
-  MECALL(ar, 1, arc);
-  MECALL(del_ar, 1, arc);
-  MECALL(add_ar, 1, arc);
 
   bane_calc_neighbourhood_sizes(current, nb_size);
 
   max_score = current_score;
 
   for (iteration = 0; iteration < chain_length;) {
-    int ch;
-    int hthit;
     int accept;
-
     double new_score;
-    double from_score;
-    double to_score;
-    double hastings_ratio;
-    double mh_ratio;
+    double mh;
 
-    bane_assign(bn, current);
+    propose_step(current, proposal, &sinfo, nb_size, maxtblsize);
 
-    /*
-     * propose and apply a step to bn
-     */
-    ch = rand() % 5;
+    new_score = calc_score(proposal, dt, current_score, sht, &sinfo,
+			   scoreboard, ess, param_cost);
 
-    if (ch != Rev && nb_size[ch] == 0)
-      continue;
-
-    switch (ch) {
-    case Add:
-      ch = bane_change_random_add(bn, ar, nb_size[ch], maxtblsize);
-      break;
-    case Del:
-      ch = bane_change_random_del(bn, ar, nb_size[ch], maxtblsize);
-      break;
-    case Rev:
-      if (!bane_rev_random_arc(bn, ar, maxtblsize))
-	continue; /* could not revert any edge, try another Op */
-      else
-	bane_rev_arc_complete(bn, ar);
-      break;
-    case ChangeTo:
-      ch = bane_change_random_to(bn, del_ar, add_ar, nb_size[ch],
-				 maxtblsize);
-      break;
-    case ChangeFrom:
-      ch = bane_change_random_from(bn, del_ar, add_ar, nb_size[ch],
-				   maxtblsize);
-      break;
-    }
-
-    if (ch == -1)
-      continue;
-
-    hthit = 0;
-
-    if (score_hashtable_get(sht, bn->pmx->mx, &new_score))
-      hthit = 1;
-    else
-      new_score = update_score(bn, ch, ar, del_ar,
-			       add_ar, dt, scoreboard,
-			       sht, &from_score, &to_score,
-			       ess, param_cost, current_score);
-
-    bane_calc_neighbourhood_sizes(bn, new_nb_size);
-
-    switch (ch) {
-    case Add:
-      hastings_ratio = (double)nb_size[Add] / new_nb_size[Del];
-      break;
-    case Del:
-      hastings_ratio = (double)nb_size[Del] / new_nb_size[Add];
-      break;
-    case Rev:
-      hastings_ratio = 1.;
-      break;
-    case ChangeTo:
-      hastings_ratio = (double)nb_size[ChangeTo] / new_nb_size[ChangeTo];
-      break;
-    case ChangeFrom:
-      hastings_ratio = (double)nb_size[ChangeFrom] / new_nb_size[ChangeFrom];
-    }
-
-    mh_ratio = hastings_ratio * exp(new_score - current_score);
+    mh = calc_mh(proposal, current_score, new_score, &sinfo, nb_size);
     
-    accept = mh_ratio >= 1;
+    accept = mh >= 1;
 
     if (accept) {
       ++n_eless;
     } else
-      if (drand48() < mh_ratio) {
+      if (drand48() < mh) {
 	accept = 1;
 	++n_accepts;
       } else {
@@ -270,27 +327,17 @@ void sample(format *fmt, data *dt, double ess, int maxtblsize,
       bane *sw;
       unsigned *nbsw;
 
-      if (hthit) {
-	double scorecheck = current_score;
-	/*
-	 * although we know the score of the entire network, we also
-	 * need to update the scoreboard, and thus calculate from_score
-	 * and to_score
-	 */
-	update_score(bn, ch, ar, del_ar, add_ar, dt, scoreboard, NULL,
-		     &from_score, &to_score, ess, param_cost, scorecheck);
-      }
+      complete_step(proposal, dt, current_score, scoreboard, &sinfo,
+		    ess, param_cost);
 
-      scoreboard[ar->from] = from_score;
-      scoreboard[ar->to] = to_score;
-
+      /* swap current - proposal */
       sw = current;
-      current = bn;
-      bn = sw;
+      current = proposal;
+      proposal = sw;
 
       nbsw = nb_size;
-      nb_size = new_nb_size;
-      new_nb_size = nbsw;
+      nb_size = sinfo.new_nb_size;
+      sinfo.new_nb_size = nbsw;
 
       current_score = new_score;
 
