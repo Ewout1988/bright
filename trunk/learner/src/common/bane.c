@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <math.h>
 #include "err.h"
 #include "forest.h"
@@ -326,38 +327,73 @@ bane* bane_create_from_pmx(format* fmt, parent_matrix* pmx){
   return bn;
 }
 
-void propagate_path_add_down(bane* bn, node* me, int* addend,
-			     int new_parent_id){
+void propagate_path_change_down(bane* bn, node* me, int* new_parent_counts,
+				int new_parent_id, int new_child_id, int add)
+{
   int i;
   int c = -1;
   node* ch = NULL;
 
-  /* first update me */
-  ++ me->path_to_me_count[new_parent_id];
+  if (me->visited)
+    return;
+
+  me->visited = 1;
+
+  /*
+   * add #paths from new_parent, as much as there were from new_child
+   */
+
+  /*
+  fprintf(stderr, "-- before\n");
+  node_write(me, bn->nodecount, stderr);
+  */
+
+  /*
+   * first update me:
+   */  
+
+  me->path_to_me_count[me->id] = 1;
+
+  me->path_to_me_count[new_parent_id]
+    += add * me->path_to_me_count[new_child_id];
 
   me->ancestorcount = 0;
-  for(i=0; i<bn->nodecount; ++i){
-    me->path_to_me_count[i] += addend[i];
+  for (i=0; i<bn->nodecount; ++i) {
+    me->path_to_me_count[i]
+      += (add * me->path_to_me_count[new_child_id] * new_parent_counts[i]);
     me->ancestorcount += IS_ANCESTOR_OF(me,i);
   }
 
-  /* and then propagate to children */
+  me->path_to_me_count[me->id] = 0;
 
+  /*
+  fprintf(stderr, "-- after\n");
+  node_write(me, bn->nodecount, stderr);
+
+  for (i=0; i<bn->nodecount; ++i) {
+    assert(me->path_to_me_count[i] >= 0);
+  }
+  */
+
+  /* and then propagate to children */
   ch = FIRST_CHILD(bn, me, c);
   while(c!=-1) {
-    propagate_path_add_down(bn, ch, addend, new_parent_id);
+    propagate_path_change_down(bn, ch, new_parent_counts,
+			       new_parent_id, new_child_id, add);
     ch = NEXT_CHILD(bn, me, c);
   }
 }
 
-/*
- * FIXME: we could avoid visiting same ancestors
- */
 void propagate_path_change_up(bane* bn, node* me){
   int i;
   int c = -1;
   int me_i = me - bn->nodes;
   node* ch = NULL;
+
+  if (me->visited)
+    return;
+
+  me->visited = 1;
 
   me->offspringcount = 0;
   for(i=0; i<bn->nodecount; ++i){
@@ -389,8 +425,41 @@ void bane_add_arc(bane* bn, arc* ar){
 void bane_add_arc_complete(bane* bn, arc* ar){
   node* from = bn->nodes + ar->from;
   node* to   = bn->nodes + ar->to;
+  int i;
 
-  propagate_path_add_down(bn, to, from->path_to_me_count, from->id);
+  /*
+  fprintf(stderr, "\nadd: %d -> %d\n\n", ar->from, ar->to);
+  bane_write_structure(bn, stderr);
+  node_write(from, bn->nodecount, stderr);
+  */
+
+  for (i = 0; i < bn->nodecount; ++i)
+    bn->nodes[i].visited = 0;
+
+  propagate_path_change_down(bn, to, from->path_to_me_count, from->id,
+			     to->id, 1);
+
+  if (TRACK_OFFSPRING_COUNT)
+    propagate_path_change_up(bn, from);
+}
+
+void bane_del_arc_complete(bane *bn, arc *ar) {
+  node *from = bn->nodes + ar->from;
+  node *to = bn->nodes + ar->to;
+  int i;
+
+  /*
+  fprintf(stderr, "\ndel: %d -> %d\n\n", ar->from, ar->to);
+  bane_write_structure(bn, stderr);
+  node_write(from, bn->nodecount, stderr);
+  */
+
+  for (i = 0; i < bn->nodecount; ++i)
+    bn->nodes[i].visited = 0;
+
+   propagate_path_change_down(bn, to, from->path_to_me_count, from->id,
+			     to->id, -1);
+
   if (TRACK_OFFSPRING_COUNT)
     propagate_path_change_up(bn, from);
 }
@@ -432,15 +501,6 @@ void bane_del_arc(bane* bn, arc* ar){
   fprintf(stderr,"Deleted arc %d -> %d\n",from->id, to->id);
   node_write(bn,from,stderr);
   */
-}
-
-void bane_del_arc_complete(bane *bn, arc *ar) {
-  node *from = bn->nodes + ar->from;
-  node *to = bn->nodes + ar->to;
-
-  propagate_path_del_down(bn, to, from->path_to_me_count, from->id);
-  if (TRACK_OFFSPRING_COUNT)
-    propagate_path_change_up(bn, from);
 }
 
 void bane_rev_arc(bane* bn, arc* ar){
