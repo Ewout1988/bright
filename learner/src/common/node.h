@@ -26,6 +26,8 @@ struct node {
   int* path_to_me_count;
   int ancestorcount;
   int offspringcount;
+
+  int visited;
 };
 
 extern int TRACK_OFFSPRING_COUNT;
