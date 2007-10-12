@@ -265,6 +265,29 @@ void bane_assign(bane* dst, bane* src) {
   }
 }
 
+void bane_assign_from_pmx(bane *bn, parent_matrix* pmx){
+  arc* ar;
+  MEMALL(ar,1,arc);
+  {
+    int c;
+    for(c=0; c<bn->nodecount; ++c){
+      int p;
+      for(p=0;p<bn->nodecount; ++p){
+	if(!IS_PARENT(c,p,pmx)) continue;
+	if((c==p) || (IS_ANCESTOR_OF(bn->nodes+p, c))) {
+	  fprintf(stderr, "Error in bane_assign_from_pmx\n");
+	  exit(15);
+	}
+	ar->from = p;
+	ar->to = c;
+	bane_add_arc(bn, ar);
+	bane_add_arc_complete(bn, ar);
+      }
+    }
+  }
+  free(ar);
+}
+
 bane* bane_copy(bane* src) {
   bane* dst = bane_create(src->nodecount);
   bane_assign(dst, src);
@@ -297,27 +320,9 @@ bane* bane_create_forest(format* fmt, double ess, data* dt){
 
 bane* bane_create_from_pmx(format* fmt, parent_matrix* pmx){
   bane* bn = bane_create_from_format(fmt);
-  arc* ar;
-  MEMALL(ar,1,arc);
 
-  {
-    int c;
-    for(c=0; c<bn->nodecount; ++c){
-      int p;
-      for(p=0;p<bn->nodecount; ++p){
-	if(!IS_PARENT(c,p,pmx)) continue;
-	if((c==p) || (IS_ANCESTOR_OF(bn->nodes+p, c))) {
-	  bane_free(bn);
-	  return NULL;
-	}
-	ar->from = p;
-	ar->to = c;
-	bane_add_arc(bn, ar);
-	bane_add_arc_complete(bn, ar);
-      }
-    }
-  }
-  free(ar);
+  bane_assign_from_pmx(bn, pmx);
+
   return bn;
 }
 

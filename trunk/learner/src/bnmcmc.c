@@ -3,6 +3,7 @@
 #include <math.h>
 #include <errno.h>
 #include <unistd.h>
+#include <string.h>
 #include "err.h"
 #include "format.h"
 #include "data.h"
@@ -229,8 +230,20 @@ static void complete_step(bane *bn, data *dt, double current_score,
   scoreboard[sinfo->ar.to] = sinfo->to_score;
 }
 
+static double calc_m(double current_score, double new_score,
+		     double T, double H0)
+{
+  if (-new_score < H0)
+    new_score = -H0;
+  if (-current_score < H0)
+    current_score = -H0;
+
+  return exp((new_score - current_score)/T);
+}
+
 static double calc_mh(bane *bn, double current_score, double new_score,
-		      step_aux_info *sinfo, unsigned *nb_size)
+		      step_aux_info *sinfo, unsigned *nb_size, double T,
+		      double H0)
 {
   double hastings_ratio;
 
@@ -257,119 +270,365 @@ static double calc_mh(bane *bn, double current_score, double new_score,
       = (double)nb_size[ChangeFrom] / sinfo->new_nb_size[ChangeFrom];
   }
 
-  return hastings_ratio * exp(new_score - current_score);
+  if (-new_score < H0)
+    new_score = -H0;
+  if (-current_score < H0)
+    current_score = -H0;
+
+  return hastings_ratio * calc_m(current_score, new_score, T, H0);
+}
+
+typedef struct energy_ring {
+  unsigned  num_samples;
+  int       struct_size;
+
+  unsigned *sample_mx;         /* array of network structures */
+  double   *sample_score;      /* array of scores, score = -h(x) */
+} energy_ring;
+
+void energy_ring_init(energy_ring *ring, unsigned ring_size, bane *bn)
+{
+  ring->struct_size = bn->pmx->m * bn->pmx->one_dim_size;
+  ring->num_samples = 0;
+
+  MECALL(ring->sample_mx, ring->struct_size * ring_size, unsigned);
+  MECALL(ring->sample_score, ring_size, double);
+}
+
+typedef struct mcmc_chain {
+  double             T;
+
+  energy_ring       *energy_rings; /* array of rings */
+
+  struct mcmc_chain *prev;         /* ring at higher T */
+  struct mcmc_chain *next;         /* ring at lower T */
+
+  /* info on current state */
+  bane     *current;
+  double    current_score;
+  double   *scoreboard;
+  unsigned *nb_size;
+
+  /* diagnostics */
+  int mh_accepts;
+  int mh_rejects;
+  int mh_eless;
+
+  int ee_accepts;
+  int ee_rejects;
+  int ee_eless;
+
+} mcmc_chain;
+
+static mcmc_chain *chain_create(mcmc_chain *prev, double T, int K,
+				unsigned sample_length,
+				unsigned sample_interval,
+				bane *bn, data *dt, double ess,
+				double param_cost)
+{
+  mcmc_chain *chain;
+  MECALL(chain, 1, mcmc_chain);
+
+  chain->T = T;
+
+  if (prev)
+    prev->next = chain;
+  chain->prev = prev;
+
+  MECALL(chain->scoreboard, bn->nodecount, double);
+  MECALL(chain->nb_size, 5, unsigned);
+
+  chain->current = bane_copy(bn);
+  bane_gather_full_ss(chain->current, dt);
+  chain->current_score
+    = bane_get_score_param_costs(chain->current, ess, chain->scoreboard);
+  bane_calc_neighbourhood_sizes(chain->current, chain->nb_size); 
+
+  if (T > 1.) { // an auxiliary chain, create energy rings
+    int r;
+    MECALL(chain->energy_rings, K+1, energy_ring);
+    for (r = 0; r < K+1; ++r)
+      energy_ring_init(chain->energy_rings + r, sample_length/sample_interval,
+		       chain->current);
+  } else
+    chain->energy_rings = 0;
+
+  chain->mh_accepts = chain->mh_rejects = chain->mh_eless = 0;
+  chain->ee_accepts = chain->ee_rejects = chain->ee_eless = 0;
+
+  return chain;
+}
+
+static int get_ring_index(double score, double *H, int K)
+{
+  double h = -score;
+  int i;
+
+  if (h < H[0]) {
+    fprintf(stderr, "Oops: %g lower than H0 (%g): ", h, H[0]);
+    exit(-1);
+  }
+
+  for (i = 1; i <= K; ++i)
+    if (h < H[i])
+      return i-1;
+
+  return K;
+}
+
+static void init_ladder(double *T, double *H, int K,
+			double H0, double HK, double c)
+{
+  int i;
+
+  T[0] = 1;
+  H[0] = H0;
+
+  if (K > 0) {
+    double logHStep = log(HK/H0)/K;
+    for (i = 1; i <= K; ++i) {
+      H[i] = exp(log(H0) + i*logHStep);
+      T[i] = T[i-1] * c;
+    }
+  }
+
+  fprintf(stderr, "T: ");
+  for (i = 0; i <= K; ++i)
+    fprintf(stderr, " %g", T[i]);
+  fprintf(stderr, "\n");
+
+  fprintf(stderr, "H: ");
+  for (i = 0; i <= K; ++i)
+    fprintf(stderr, " %g", H[i]);
+  fprintf(stderr, "\n");
 }
 
 static void sample(format *fmt, data *dt, double ess, int maxtblsize,
-		   int chain_length, int sample_interval)
+		   int chain_length, int sample_interval,
+		   int K, int B, int N,
+		   double H0, double HK, double c, double pee)
 {
-  double* scoreboard;
   score_hashtable* sht;
 
-  arc* ar;
-  arc* del_ar;
-  arc* add_ar;
+  parent_matrix* tmp_pmx;
 
-  double current_score, max_score;
-  bane *proposal, *current;
-
-  int iteration;
-  unsigned *nb_size;
-
+  double max_score = -HUGE;
+  bane *proposal;
+  bane *empty;
   struct step_aux_info sinfo;
 
-  int n_accepts = 0;
-  int n_rejects = 0;
-  int n_eless = 0;
+  int iteration;
+  int last_iteration;
+
+  double *T;
+  double *H;
+  mcmc_chain *chainK = NULL;
+
+  MECALL(sinfo.new_nb_size, 5, unsigned);
+  MECALL(T, K+1, double);
+  MECALL(H, K+1, double);
+
+  init_ladder(T, H, K, H0, HK, c);
 
   proposal = bane_create_from_format(fmt);
-  current = bane_create_from_format(fmt);
+  empty = bane_create_from_format(fmt);
+  
+  bane_gather_full_ss(proposal, dt);
 
-  sht = create_hashtable(500000, current);
+  tmp_pmx = parent_matrix_create(proposal->nodecount);
 
-  MECALL(scoreboard, current->nodecount, double);
-  MECALL(nb_size, 5, unsigned);
-  MECALL(sinfo.new_nb_size, 5, unsigned);
+  sht = create_hashtable(500000, proposal);
 
-  bane_gather_full_ss(current, dt);
-  current_score = bane_get_score_param_costs(current, ess, scoreboard);
-  score_hashtable_put(sht, current->pmx->mx, current_score); 
+  last_iteration = chain_length + (N+B)*K;
 
-  bane_calc_neighbourhood_sizes(current, nb_size);
+  printf("state\tlog posterior\n");
 
-  max_score = current_score;
+  for (iteration = 0; iteration < last_iteration; ++iteration) {
+    int k;
+    mcmc_chain *chain = NULL;
 
-  for (iteration = 0; iteration < chain_length;) {
-    int accept;
-    double new_score;
-    double mh;
+    for (k = K; k >= 0; --k) {
+      if (iteration == (K-k)*(B+N)) {
+	mcmc_chain *next
+	  = chain_create(chain, T[k], K, chain_length-B, sample_interval,
+			 proposal, dt, ess, param_cost);
+	if (chainK == NULL)
+	  chainK = next;
+      }
 
-    propose_step(current, proposal, &sinfo, nb_size, maxtblsize);
+      if (K == k)
+	chain = chainK;
+      else
+	chain = chain->next;
 
-    new_score = calc_score(proposal, dt, current_score, sht, &sinfo,
-			   scoreboard, ess, param_cost);
+      if (!chain)
+	break;
 
-    mh = calc_mh(proposal, current_score, new_score, &sinfo, nb_size);
-    
-    accept = mh >= 1;
+      if (iteration >= last_iteration - k*(B+N))
+	continue;
 
-    if (accept) {
-      ++n_eless;
-    } else
-      if (drand48() < mh) {
-	accept = 1;
-	++n_accepts;
+      int doEEStep = 0;
+      energy_ring *ring;
+
+      if (k != K) {
+	int I = get_ring_index(chain->current_score, H, K);
+	ring = chain->prev->energy_rings + I;
+	if (ring->num_samples)
+	  doEEStep = drand48() < pee;
+      }
+
+      if (doEEStep) {
+	int accept;
+	int sampleI = rand() % ring->num_samples;
+	double new_score = ring->sample_score[sampleI];
+
+	double d
+	  = calc_m(chain->current_score, new_score, chain->T, H[k])
+	  / calc_m(chain->current_score, new_score, chain->prev->T, H[k+1]);
+
+	accept = d >= 1;
+
+	if (accept) {
+	  ++chain->ee_eless;
+	} else
+	  if (drand48() < d) {
+	    accept = 1;
+	    ++chain->ee_accepts;
+	  } else {
+	    ++chain->ee_rejects;
+	  }
+
+	if (accept) {
+	  memcpy(tmp_pmx->mx, ring->sample_mx + sampleI * ring->struct_size, 
+		 sizeof(unsigned) * ring->struct_size);
+	  bane_assign(chain->current, empty);
+	  bane_assign_from_pmx(chain->current, tmp_pmx);
+	  bane_gather_full_ss(chain->current, dt);
+	  chain->current_score
+	    = bane_get_score_param_costs(chain->current, ess,
+					 chain->scoreboard);
+	  bane_calc_neighbourhood_sizes(chain->current, chain->nb_size);
+	}
       } else {
-	++n_rejects;
+	int accept;
+	double new_score;
+	double mh;
+
+	propose_step(chain->current, proposal, &sinfo, chain->nb_size,
+		     maxtblsize);
+
+	new_score = calc_score(proposal, dt, chain->current_score, sht, &sinfo,
+			       chain->scoreboard, ess, param_cost);
+
+	mh = calc_mh(proposal, chain->current_score, new_score, &sinfo,
+		     chain->nb_size, chain->T, H[k]);
+    
+	accept = mh >= 1;
+
+	if (accept) {
+	  ++chain->mh_eless;
+	} else
+	  if (drand48() < mh) {
+	    accept = 1;
+	    ++chain->mh_accepts;
+	  } else {
+	    ++chain->mh_rejects;
+	  }
+
+	if (accept) {
+	  bane *sw;
+	  unsigned *nbsw;
+
+	  complete_step(proposal, dt, chain->current_score, chain->scoreboard,
+			&sinfo, ess, param_cost);
+
+	  /* swap current - proposal */
+	  sw = chain->current;
+	  chain->current = proposal;
+	  proposal = sw;
+
+	  nbsw = chain->nb_size;
+	  chain->nb_size = sinfo.new_nb_size;
+	  sinfo.new_nb_size = nbsw;
+
+	  chain->current_score = new_score;
+
+	  if (new_score > max_score) {
+	    max_score = new_score;
+	    if (max_score > -H0) {
+	      fprintf(stderr, "max_score %g > -H0 %g", max_score, -H0);
+	      exit(1);
+	    }
+	  }
+	}
       }
 
-    if (accept) {
-      bane *sw;
-      unsigned *nbsw;
+      if (iteration % sample_interval == 0) {
+	double mh_ar, ee_ar;
 
-      complete_step(proposal, dt, current_score, scoreboard, &sinfo,
-		    ess, param_cost);
+	if ((iteration >= (K-k)*(B+N) + B)) {
+	  if (chain->energy_rings) {
+	    int I = get_ring_index(chain->current_score, H, K);
+	    ring = chain->energy_rings + I;
 
-      /* swap current - proposal */
-      sw = current;
-      current = proposal;
-      proposal = sw;
+	    ring->sample_score[ring->num_samples] = chain->current_score;
+	    memcpy(ring->sample_mx + ring->num_samples * ring->struct_size,
+		   chain->current->pmx->mx,
+		   sizeof(unsigned) * ring->struct_size);
 
-      nbsw = nb_size;
-      nb_size = sinfo.new_nb_size;
-      sinfo.new_nb_size = nbsw;
+	    ++ring->num_samples;
+	  }
+	}
 
-      current_score = new_score;
+	mh_ar = (double)(chain->mh_accepts + chain->mh_eless)
+	  /(chain->mh_accepts + chain->mh_eless + chain->mh_rejects);
 
-      if (current_score > max_score) {
-	FILE *fp;
+	ee_ar = (double)(chain->ee_accepts + chain->ee_eless)
+	  /(chain->ee_accepts + chain->ee_eless + chain->ee_rejects);
 
-	OPENFILE_OR_DIE(fp,"best.str","w");
-	bane_write_structure(current,fp);
-	CLOSEFILE_OR_DIE(fp,"best.str");
+	fprintf(stderr, "[%d,%d]: %g (mh: %g",
+		iteration, k, chain->current_score,
+		mh_ar);
+	if (chain->ee_accepts + chain->ee_eless + chain->ee_rejects)
+	  fprintf(stderr, ", ar: %g", ee_ar);
+	fprintf(stderr, ")\n");
 
-	max_score = current_score;
+	if (chain->T == 1) {
+	  fprintf(stdout, "%d\t%g\n", iteration - K*(B+N),
+		  chain->current_score);
+	}
       }
     }
-
-    if (iteration % sample_interval == 0) {
-      FILE *fp;
-
-      fprintf(stdout, "%d,%g,%g,%d\n", iteration, current_score, max_score,
-	      bane_arc_count(current));
-
-      OPENFILE_OR_DIE(fp,"sample.str","w");
-      bane_write_structure(current,fp);
-      CLOSEFILE_OR_DIE(fp,"sample.str");
-    }
-
-    ++iteration;
   }
 
-  free(scoreboard);
-  free(ar);
-  free(add_ar);
-  free(del_ar);
+  {
+    int i, k;
+    mcmc_chain *chain;
+
+    chain = chainK;
+    fprintf(stderr, "Chain");
+
+    for (i = 0; i < K; ++i) {
+      fprintf(stderr, "\t[%g-%g(", H[i], H[i+1]);
+      chain = chain->next;
+    }
+
+    fprintf(stderr, "\t>=%g", H[K]);
+    fprintf(stderr, "\n");
+
+    for (k = 0; k <= K; ++k) {
+      fprintf(stderr, "%d, T%d = %g", k, k, chain->T);
+
+      if (chain->energy_rings) {
+	for (i = 0; i <= K; ++i) {
+	  fprintf(stderr, "\t%d", chain->energy_rings[i].num_samples);
+	}
+      }
+      fprintf(stderr, "\n");
+      chain = chain->prev;
+    }
+  }
+
   score_hashtable_free(sht);
 }
 
@@ -380,13 +639,16 @@ int main(int argc, char* argv[]){
   double ess;
   FILE* fp;
   int chain_length, sample_interval;
+  int K, B, N;
+  double H0, HK, c, pee;
 
   srand48(getpid());
 
-  if (argc != 9) {
+  if (argc != 16) {
     fprintf(stderr,
 	    "Usage: %s vdfile datafile datacount ess "
-	    "param_cost chain_length sample_interval pidfile\n", 
+	    "param_cost chain_length samples K pburnin min_ring_samples "
+	    "H0 HK c pee pid_file\n", 
 	    argv[0]);
     exit(-1);
   }
@@ -409,11 +671,21 @@ int main(int argc, char* argv[]){
   param_cost = atof(argv[5]);
 
   chain_length = atoi(argv[6]);
-  sample_interval = atoi(argv[7]);
+  sample_interval = chain_length / atoi(argv[7]);
+
+  K = atoi(argv[8]);
+  B = atof(argv[9]) * chain_length;
+  N = atoi(argv[10]) * sample_interval;
+
+  H0 = atof(argv[11]);
+  HK = atof(argv[12]);
+  c = atof(argv[13]);
+  pee = atof(argv[14]);
 
   TRACK_OFFSPRING_COUNT = 1;
 
-  sample(fmt, dt, ess, 10000, chain_length, sample_interval);
+  sample(fmt, dt, ess, 10000, chain_length, sample_interval,
+	 K, B, N, H0, HK, c, pee);
 
   format_free(fmt);
   data_free(dt);
