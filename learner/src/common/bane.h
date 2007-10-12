@@ -45,6 +45,9 @@ bane_copy(bane* src);
 extern void 
 bane_assign(bane* dst, bane* src);
 
+extern void
+bane_assign_from_pmx(bane *bn, parent_matrix* pmx);
+
 extern bane* 
 bane_create_forest(format* fmt, double ess, data* dt);
 

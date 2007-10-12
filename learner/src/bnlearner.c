@@ -97,7 +97,6 @@ bane *open_or_create(char *structfilename, format *fmt, data *dt, double ess)
     Open struct file if it already exists and take that struct as
     the current best.
    */
-  struct stat *buf;
   FILE *fp = fopen(structfilename, "r");
   arc ar;
   bane *bn;
@@ -293,7 +292,6 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 
       if (accept) {
 	double score_check = stl->best_score;
-	double check;
 	stl->best_score = new_score;
 	stl->beba = bn;
 
@@ -410,8 +408,6 @@ int main(int argc, char* argv[]){
   format* fmt;
   double ess;
   FILE* fp;
-  double T0;
-  double mu_T;
   int iterations, coolings;
 
   if (argc != 11) {
