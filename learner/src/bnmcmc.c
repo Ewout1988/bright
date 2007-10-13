@@ -398,7 +398,7 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 		   int chain_length, int sample_interval,
 		   int K, int B, int N,
 		   double H0, double HK, double c, double pee,
-		   const char *structsfilename, const char *logfilename)
+		   char *prefix)
 {
   score_hashtable* sht;
 
@@ -418,6 +418,8 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 
   FILE *strfp, *logfp;
 
+  char *strfilename, *logfilename;
+
   MECALL(sinfo.new_nb_size, 5, unsigned);
   MECALL(T, K+1, double);
   MECALL(H, K+1, double);
@@ -435,7 +437,15 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 
   last_iteration = chain_length + (N+B)*K;
 
-  OPENFILE_OR_DIE(strfp, structsfilename, "w");
+  MECALL(strfilename, strlen(prefix) + 4, char);
+  strcpy(strfilename, prefix);
+  strcat(strfilename, ".str");
+
+  MECALL(logfilename, strlen(prefix) + 4, char);
+  strcpy(logfilename, prefix);
+  strcat(logfilename, ".log");
+
+  OPENFILE_OR_DIE(strfp, strfilename, "w");
   OPENFILE_OR_DIE(logfp, logfilename, "w");
 
   fprintf(logfp, "state\tlog posterior\n");
@@ -601,7 +611,7 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
   }
 
   CLOSEFILE_OR_DIE(logfp, logfilename);
-  CLOSEFILE_OR_DIE(strfp, structsfilename);
+  CLOSEFILE_OR_DIE(strfp, strfilename);
 
   {
     int i, k;
@@ -667,11 +677,11 @@ int main(int argc, char* argv[]){
 
   srand48(getpid());
 
-  if (argc != 17) {
+  if (argc != 16) {
     fprintf(stderr,
 	    "Usage: %s vdfile datafile datacount ess "
 	    "param_cost chain_length samples K pburnin min_ring_samples "
-	    "H0 HK c pee structs_file log_file\n", 
+	    "H0 HK c pee result_prefix\n", 
 	    argv[0]);
     exit(-1);
   }
@@ -704,7 +714,7 @@ int main(int argc, char* argv[]){
   TRACK_OFFSPRING_COUNT = 1;
 
   sample(fmt, dt, ess, 10000, chain_length, sample_interval,
-	 K, B, N, H0, HK, c, pee, argv[15], argv[16]);
+	 K, B, N, H0, HK, c, pee, argv[15]);
 
   format_free(fmt);
   data_free(dt);
