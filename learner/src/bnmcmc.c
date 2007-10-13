@@ -379,7 +379,7 @@ static void init_ladder(double *T, double *H, int K,
     //double logHStep = (log(HK)-log(H0))/K;
     for (i = 1; i <= K; ++i) {
       T[i] = T[i-1] * c;
-      H[i] = (H[i-1] - (H0 - 1)) * HK + (H0 + 1);
+      H[i] = (H[i-1] - (H0 * .99)) * HK + (H0 * .99);
     }
   }
 
