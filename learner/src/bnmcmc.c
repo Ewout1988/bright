@@ -310,6 +310,8 @@ typedef struct mcmc_chain {
   int ee_accepts;
   int ee_rejects;
   int ee_eless;
+  int ee_na;
+  int ee_ok;
 
 } mcmc_chain;
 
@@ -346,6 +348,7 @@ static mcmc_chain *chain_create(mcmc_chain *prev, double T, int K,
 
   chain->mh_accepts = chain->mh_rejects = chain->mh_eless = 0;
   chain->ee_accepts = chain->ee_rejects = chain->ee_eless = 0;
+  chain->ee_na = chain->ee_ok = 0;
 
   return chain;
 }
@@ -480,8 +483,11 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
       if (k != K) {
 	int I = get_ring_index(chain->current_score, H, K);
 	ring = chain->prev->energy_rings + I;
-	if (ring->num_samples)
+	if (ring->num_samples) {
+	  ++chain->ee_ok;
 	  doEEStep = drand48() < pee;
+	} else
+	  ++chain->ee_na;
       }
 
       if (doEEStep) {
@@ -571,7 +577,7 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
       }
 
       if (iteration % sample_interval == 0) {
-	double mh_ar, ee_ar;
+	double mh_ar, ee_ar, ee_av;
 
 	if ((iteration >= (K-k)*(B+N) + B)) {
 	  if (chain->energy_rings) {
@@ -593,11 +599,13 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 	ee_ar = (double)(chain->ee_accepts + chain->ee_eless)
 	  /(chain->ee_accepts + chain->ee_eless + chain->ee_rejects);
 
+	ee_av = (double)(chain->ee_ok) / (chain->ee_ok + chain->ee_na);
+
 	fprintf(stderr, "[%d, %d, %g]: %g (mh: %g",
 		iteration, k, H[k], chain->current_score,
 		mh_ar);
 	if (chain->ee_accepts + chain->ee_eless + chain->ee_rejects)
-	  fprintf(stderr, ", ar: %g", ee_ar);
+	  fprintf(stderr, ", ee: %g [av: %g]", ee_ar, ee_av);
 	fprintf(stderr, ")\n");
 
 	if (k == 0) {
