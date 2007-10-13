@@ -371,7 +371,7 @@ static int get_ring_index(double score, double *H, int K)
 }
 
 static void init_ladder(double *T, double *H, int K,
-			double H0, double HK, double c)
+			double H0, double Hc, double Tc, FILE *statfp)
 {
   int i;
 
@@ -381,27 +381,27 @@ static void init_ladder(double *T, double *H, int K,
   if (K > 0) {
     //double logHStep = (log(HK)-log(H0))/K;
     for (i = 1; i <= K; ++i) {
-      T[i] = T[i-1] * c;
-      H[i] = (H[i-1] - (H0 * .99)) * HK + (H0 * .99);
+      T[i] = T[i-1] * Tc;
+      H[i] = (H[i-1] - (H0 * .99)) * Hc + (H0 * .99);
     }
   }
 
-  fprintf(stderr, "T: ");
+  fprintf(statfp, "T: ");
   for (i = 0; i <= K; ++i)
-    fprintf(stderr, " %g", T[i]);
-  fprintf(stderr, "\n");
+    fprintf(statfp, " %g", T[i]);
+  fprintf(statfp, "\n");
 
-  fprintf(stderr, "H: ");
+  fprintf(statfp, "H: ");
   for (i = 0; i <= K; ++i)
-    fprintf(stderr, " %g", H[i]);
-  fprintf(stderr, "\n");
+    fprintf(statfp, " %g", H[i]);
+  fprintf(statfp, "\n");
 }
 
 static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 		   int chain_length, int sample_interval,
 		   int K, int B, int N,
-		   double H0, double HK, double c, double pee,
-		   char *prefix)
+		   double H0, double Hc, double Tc, double pee,
+		   char *prefix, FILE *statfp)
 {
   score_hashtable* sht;
 
@@ -427,7 +427,7 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
   MECALL(T, K+1, double);
   MECALL(H, K+1, double);
 
-  init_ladder(T, H, K, H0, HK, c);
+  init_ladder(T, H, K, H0, Hc, Tc, statfp);
 
   proposal = bane_create_from_format(fmt);
   empty = bane_create_from_format(fmt);
@@ -440,11 +440,13 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 
   last_iteration = chain_length + (N+B)*K;
 
-  MECALL(strfilename, strlen(prefix) + 4, char);
+  fflush(statfp);
+
+  MECALL(strfilename, strlen(prefix) + 6, char);
   strcpy(strfilename, prefix);
   strcat(strfilename, ".str");
 
-  MECALL(logfilename, strlen(prefix) + 4, char);
+  MECALL(logfilename, strlen(prefix) + 6, char);
   strcpy(logfilename, prefix);
   strcat(logfilename, ".log");
 
@@ -626,34 +628,36 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
     mcmc_chain *chain, *chain0;
 
     chain = chainK;
-    fprintf(stderr, "Chain");
+    fprintf(statfp, "Chain");
 
     for (i = 0; i < K; ++i) {
-      fprintf(stderr, "\t[%g-%g(", H[i], H[i+1]);
+      fprintf(statfp, "\t[%g-%g(", H[i], H[i+1]);
       chain = chain->next;
     }
 
     chain0 = chain;
 
-    fprintf(stderr, "\t>=%g", H[K]);
-    fprintf(stderr, "\n");
+    fprintf(statfp, "\t>=%g", H[K]);
+    fprintf(statfp, "\n");
 
     for (k = 0; k <= K; ++k) {
-      fprintf(stderr, "%d, T%d = %g", k, k, T[k]);
+      fprintf(statfp, "%d, T%d = %g", k, k, T[k]);
 
       if (chain->energy_rings) {
 	for (i = 0; i <= K; ++i) {
-	  fprintf(stderr, "\t%d", chain->energy_rings[i].num_samples);
+	  fprintf(statfp, "\t%d", chain->energy_rings[i].num_samples);
 	}
       }
-      fprintf(stderr, "\n");
+      fprintf(statfp, "\n");
       chain = chain->prev;
     }
+
+    fprintf(statfp, "\n");
 
     chain = chain0;
 
     for (k = 0; k <= K; ++k) {
-      double mh_ar, ee_ar;
+      double mh_ar, ee_ar, ee_av;
 
       mh_ar = (double)(chain->mh_accepts + chain->mh_eless)
 	/(chain->mh_accepts + chain->mh_eless + chain->mh_rejects);
@@ -661,11 +665,13 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
       ee_ar = (double)(chain->ee_accepts + chain->ee_eless)
 	/(chain->ee_accepts + chain->ee_eless + chain->ee_rejects);
 
-      fprintf(stderr, "Accept-ratios chain %d: mh: %g", k, mh_ar);
+      ee_av = (double)(chain->ee_ok) / (chain->ee_ok + chain->ee_na);
+
+      fprintf(statfp, "Accept-ratios chain %d: mh: %g", k, mh_ar);
 
       if (k != K)
-	fprintf(stderr, ", ee: %g", ee_ar);
-      fprintf(stderr, "\n");
+	fprintf(statfp, ", ee: %g (av: %g)", ee_ar, ee_av);
+      fprintf(statfp, "\n");
 
       chain = chain->prev;
     }
@@ -681,7 +687,10 @@ int main(int argc, char* argv[]){
   double ess;
   int chain_length, sample_interval;
   int K, B, N;
-  double H0, HK, c, pee;
+  double H0, Hc, Tc, pee;
+  char *statfilename;
+  FILE *statfp;
+  int i;
 
   srand48(getpid());
 
@@ -689,7 +698,7 @@ int main(int argc, char* argv[]){
     fprintf(stderr,
 	    "Usage: %s vdfile datafile datacount ess "
 	    "param_cost chain_length samples K pburnin min_ring_samples "
-	    "H0 HK c pee result_prefix\n", 
+	    "H0 Hc Tc pee result_prefix\n", 
 	    argv[0]);
     exit(-1);
   }
@@ -715,14 +724,45 @@ int main(int argc, char* argv[]){
   N = atoi(argv[10]) * sample_interval;
 
   H0 = atof(argv[11]);
-  HK = atof(argv[12]);
-  c = atof(argv[13]);
+  Hc = atof(argv[12]);
+  Tc = atof(argv[13]);
   pee = atof(argv[14]);
+
+  MECALL(statfilename, strlen(argv[15]) + 6, char);
+  strcpy(statfilename, argv[15]);
+  strcat(statfilename, ".stat");
+
+  OPENFILE_OR_DIE(statfp, statfilename, "w");
+
+  fprintf(statfp, "bnmcmc stats\n");
+  fprintf(statfp, "------------\n\n");
+
+  fprintf(statfp, "run:");
+
+  for (i = 0; i < argc; ++i) {
+    fprintf(statfp, " ");
+    fprintf(statfp, argv[i]);
+  }
+  fprintf(statfp, "\n\n");
+
+  fprintf(statfp,
+	  "   chain_length: %d\n"
+	  "sample_interval: %d\n"
+	  "              K: %d\n"
+	  "              B: %d\n"
+	  "              N: %d\n"
+	  "             H0: %g\n"
+	  "             Hc: %g\n"
+	  "             Tc: %g\n"
+	  "            pee: %g\n\n",
+	  chain_length, sample_interval, K, B, N, H0, Hc, Tc, pee);
 
   TRACK_OFFSPRING_COUNT = 1;
 
   sample(fmt, dt, ess, 10000, chain_length, sample_interval,
-	 K, B, N, H0, HK, c, pee, argv[15]);
+	 K, B, N, H0, Hc, Tc, pee, argv[15], statfp);
+
+  CLOSEFILE_OR_DIE(statfp, statfilename);
 
   format_free(fmt);
   data_free(dt);
