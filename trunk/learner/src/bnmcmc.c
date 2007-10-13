@@ -270,11 +270,6 @@ static double calc_mh(bane *bn, double current_score, double new_score,
       = (double)nb_size[ChangeFrom] / sinfo->new_nb_size[ChangeFrom];
   }
 
-  if (-new_score < H0)
-    new_score = -H0;
-  if (-current_score < H0)
-    current_score = -H0;
-
   return hastings_ratio * calc_m(current_score, new_score, T, H0);
 }
 
@@ -296,8 +291,6 @@ void energy_ring_init(energy_ring *ring, unsigned ring_size, bane *bn)
 }
 
 typedef struct mcmc_chain {
-  double             T;
-
   energy_ring       *energy_rings; /* array of rings */
 
   struct mcmc_chain *prev;         /* ring at higher T */
@@ -328,8 +321,6 @@ static mcmc_chain *chain_create(mcmc_chain *prev, double T, int K,
 {
   mcmc_chain *chain;
   MECALL(chain, 1, mcmc_chain);
-
-  chain->T = T;
 
   if (prev)
     prev->next = chain;
@@ -385,10 +376,10 @@ static void init_ladder(double *T, double *H, int K,
   H[0] = H0;
 
   if (K > 0) {
-    double logHStep = log(HK/H0)/K;
+    double logHStep = (log(HK)-log(H0))/K;
     for (i = 1; i <= K; ++i) {
       H[i] = exp(log(H0) + i*logHStep);
-      T[i] = T[i-1] * c;
+      T[i] = T[i-1] + c;
     }
   }
 
@@ -406,7 +397,8 @@ static void init_ladder(double *T, double *H, int K,
 static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 		   int chain_length, int sample_interval,
 		   int K, int B, int N,
-		   double H0, double HK, double c, double pee)
+		   double H0, double HK, double c, double pee,
+		   const char *structsfilename, const char *logfilename)
 {
   score_hashtable* sht;
 
@@ -423,6 +415,8 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
   double *T;
   double *H;
   mcmc_chain *chainK = NULL;
+
+  FILE *strfp, *logfp;
 
   MECALL(sinfo.new_nb_size, 5, unsigned);
   MECALL(T, K+1, double);
@@ -441,7 +435,10 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 
   last_iteration = chain_length + (N+B)*K;
 
-  printf("state\tlog posterior\n");
+  OPENFILE_OR_DIE(strfp, structsfilename, "w");
+  OPENFILE_OR_DIE(logfp, logfilename, "w");
+
+  fprintf(logfp, "state\tlog posterior\n");
 
   for (iteration = 0; iteration < last_iteration; ++iteration) {
     int k;
@@ -483,8 +480,8 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 	double new_score = ring->sample_score[sampleI];
 
 	double d
-	  = calc_m(chain->current_score, new_score, chain->T, H[k])
-	  / calc_m(chain->current_score, new_score, chain->prev->T, H[k+1]);
+	  = calc_m(chain->current_score, new_score, T[k], H[k])
+	  / calc_m(chain->current_score, new_score, T[k+1], H[k+1]);
 
 	accept = d >= 1;
 
@@ -521,7 +518,7 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 			       chain->scoreboard, ess, param_cost);
 
 	mh = calc_mh(proposal, chain->current_score, new_score, &sinfo,
-		     chain->nb_size, chain->T, H[k]);
+		     chain->nb_size, T[k], H[k]);
     
 	accept = mh >= 1;
 
@@ -593,17 +590,22 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 	  fprintf(stderr, ", ar: %g", ee_ar);
 	fprintf(stderr, ")\n");
 
-	if (chain->T == 1) {
-	  fprintf(stdout, "%d\t%g\n", iteration - K*(B+N),
+	if (k == 0) {
+	  fprintf(logfp, "%d\t%g\n", iteration - K*(B+N),
 		  chain->current_score);
+	  fprintf(strfp, "state %d\n", iteration - K*(B+N));
+	  bane_write_structure(chain->current, strfp);
 	}
       }
     }
   }
 
+  CLOSEFILE_OR_DIE(logfp, logfilename);
+  CLOSEFILE_OR_DIE(strfp, structsfilename);
+
   {
     int i, k;
-    mcmc_chain *chain;
+    mcmc_chain *chain, *chain0;
 
     chain = chainK;
     fprintf(stderr, "Chain");
@@ -613,11 +615,13 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
       chain = chain->next;
     }
 
+    chain0 = chain;
+
     fprintf(stderr, "\t>=%g", H[K]);
     fprintf(stderr, "\n");
 
     for (k = 0; k <= K; ++k) {
-      fprintf(stderr, "%d, T%d = %g", k, k, chain->T);
+      fprintf(stderr, "%d, T%d = %g", k, k, T[k]);
 
       if (chain->energy_rings) {
 	for (i = 0; i <= K; ++i) {
@@ -625,6 +629,26 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 	}
       }
       fprintf(stderr, "\n");
+      chain = chain->prev;
+    }
+
+    chain = chain0;
+
+    for (k = 0; k <= K; ++k) {
+      double mh_ar, ee_ar;
+
+      mh_ar = (double)(chain->mh_accepts + chain->mh_eless)
+	/(chain->mh_accepts + chain->mh_eless + chain->mh_rejects);
+
+      ee_ar = (double)(chain->ee_accepts + chain->ee_eless)
+	/(chain->ee_accepts + chain->ee_eless + chain->ee_rejects);
+
+      fprintf(stderr, "Accept-ratios chain %d: mh: %g", k, mh_ar);
+
+      if (k != K)
+	fprintf(stderr, ", ee: %g", ee_ar);
+      fprintf(stderr, "\n");
+
       chain = chain->prev;
     }
   }
@@ -637,18 +661,17 @@ int main(int argc, char* argv[]){
   data* dt;
   format* fmt;
   double ess;
-  FILE* fp;
   int chain_length, sample_interval;
   int K, B, N;
   double H0, HK, c, pee;
 
   srand48(getpid());
 
-  if (argc != 16) {
+  if (argc != 17) {
     fprintf(stderr,
 	    "Usage: %s vdfile datafile datacount ess "
 	    "param_cost chain_length samples K pburnin min_ring_samples "
-	    "H0 HK c pee pid_file\n", 
+	    "H0 HK c pee structs_file log_file\n", 
 	    argv[0]);
     exit(-1);
   }
@@ -656,10 +679,6 @@ int main(int argc, char* argv[]){
   fclose(stdin);
   /* fclose(stdout); */
   /* fclose(stderr); */
-
-  OPENFILE_OR_DIE(fp, argv[argc-1], "w");
-  fprintf(fp,"%d\n",getpid());
-  CLOSEFILE_OR_DIE(fp, argv[argc-1]);
 
   fmt = format_cread(argv[1]);
 
@@ -685,7 +704,7 @@ int main(int argc, char* argv[]){
   TRACK_OFFSPRING_COUNT = 1;
 
   sample(fmt, dt, ess, 10000, chain_length, sample_interval,
-	 K, B, N, H0, HK, c, pee);
+	 K, B, N, H0, HK, c, pee, argv[15], argv[16]);
 
   format_free(fmt);
   data_free(dt);
