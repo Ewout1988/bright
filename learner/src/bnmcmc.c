@@ -593,8 +593,8 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 	ee_ar = (double)(chain->ee_accepts + chain->ee_eless)
 	  /(chain->ee_accepts + chain->ee_eless + chain->ee_rejects);
 
-	fprintf(stderr, "[%d,%d]: %g (mh: %g",
-		iteration, k, chain->current_score,
+	fprintf(stderr, "[%d, %d, %g]: %g (mh: %g",
+		iteration, k, H[k], chain->current_score,
 		mh_ar);
 	if (chain->ee_accepts + chain->ee_eless + chain->ee_rejects)
 	  fprintf(stderr, ", ar: %g", ee_ar);
