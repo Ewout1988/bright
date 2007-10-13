@@ -376,10 +376,10 @@ static void init_ladder(double *T, double *H, int K,
   H[0] = H0;
 
   if (K > 0) {
-    double logHStep = (log(HK)-log(H0))/K;
+    //double logHStep = (log(HK)-log(H0))/K;
     for (i = 1; i <= K; ++i) {
-      H[i] = exp(log(H0) + i*logHStep);
       T[i] = T[i-1] * c;
+      H[i] = H[i-1] * HK;
     }
   }
 
