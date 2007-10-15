@@ -464,6 +464,8 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 	    + t * (log(chain0_length) - log(chainK_length)));
     int iteration;
 
+    double thispee = pee * chain0_length / last_iteration;
+
     int first_sample = k == 0 ? 0 : last_iteration*B;
     int sample_interval = last_iteration / num_samples;
 
@@ -508,7 +510,7 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 	if (ring->num_samples) {
 	  ++chain->ee_ok;
 	  chain->ee_size += ring->num_samples;
-	  doEEStep = drand48() < pee;
+	  doEEStep = drand48() < thispee;
 	} else
 	  ++chain->ee_na;
       }
