@@ -146,7 +146,9 @@ static void propose_step(bane *current, bane *bn, step_aux_info *sinfo,
 {
   int ch;
 
+  //bane_write_with_ss(current, "ori.ss");
   bane_assign(bn, current);
+  //bane_write_with_ss(bn, "foo.ss");
 
   for (;;) {
     /*
@@ -341,7 +343,7 @@ static mcmc_chain *chain_create(mcmc_chain *prev, double T, int K,
     int r;
     MECALL(chain->energy_rings, K+1, energy_ring);
     for (r = 0; r < K+1; ++r)
-      energy_ring_init(chain->energy_rings + r, num_samples,
+      energy_ring_init(chain->energy_rings + r, num_samples + num_samples/10,
 		       chain->current);
   } else
     chain->energy_rings = 0;
@@ -732,7 +734,7 @@ int main(int argc, char* argv[]){
     exit(-1);
   }
 
-  fclose(stdin);
+  /* fclose(stdin); */
   /* fclose(stdout); */
   /* fclose(stderr); */
 

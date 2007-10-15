@@ -20,6 +20,13 @@ node_assign(node* dst, node* src, int nodecount){
   dst->ancestorcount = src->ancestorcount;
   memcpy(dst->path_to_me_count, src->path_to_me_count, nodecount*sizeof(int));
   dst->offspringcount = src->offspringcount;
+
+  if (NULL != dst->ss) {
+    free(dst->ss);
+    free(dst->ssp);
+  }
+  dst->ss = NULL;
+  dst->ssp = NULL;
 }
 
 void 
