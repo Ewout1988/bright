@@ -316,8 +316,7 @@ typedef struct mcmc_chain {
 } mcmc_chain;
 
 static mcmc_chain *chain_create(mcmc_chain *prev, double T, int K,
-				unsigned sample_length,
-				unsigned sample_interval,
+				unsigned num_samples,
 				bane *bn, data *dt, double ess,
 				double param_cost)
 {
@@ -341,7 +340,7 @@ static mcmc_chain *chain_create(mcmc_chain *prev, double T, int K,
     int r;
     MECALL(chain->energy_rings, K+1, energy_ring);
     for (r = 0; r < K+1; ++r)
-      energy_ring_init(chain->energy_rings + r, sample_length/sample_interval,
+      energy_ring_init(chain->energy_rings + r, num_samples,
 		       chain->current);
   } else
     chain->energy_rings = 0;
@@ -398,10 +397,9 @@ static void init_ladder(double *T, double *H, int K,
 }
 
 static void sample(format *fmt, data *dt, double ess, int maxtblsize,
-		   int chain_length, int sample_interval,
-		   int K, int B, int N,
-		   double H0, double Hc, double Tc, double pee,
-		   char *prefix, FILE *statfp)
+		   int chain0_length, int chainK_length, int num_samples,
+		   int K, double B, double H0, double Hc,
+		   double Tc, double pee, char *prefix, FILE *statfp)
 {
   score_hashtable* sht;
 
@@ -411,9 +409,7 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
   bane *proposal;
   bane *empty;
   struct step_aux_info sinfo;
-
-  int iteration;
-  int last_iteration;
+  int k, i;
 
   double *T;
   double *H;
@@ -422,6 +418,10 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
   FILE *strfp, *logfp;
 
   char *strfilename, *logfilename;
+
+  mcmc_chain *chain = NULL;
+
+  char buf[strlen(prefix) + 15];
 
   MECALL(sinfo.new_nb_size, 5, unsigned);
   MECALL(T, K+1, double);
@@ -438,47 +438,49 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 
   sht = create_hashtable(500000, proposal);
 
-  last_iteration = chain_length + (N+B)*K;
-
   fflush(statfp);
 
-  MECALL(strfilename, strlen(prefix) + 6, char);
-  strcpy(strfilename, prefix);
-  strcat(strfilename, ".str");
+  for (k = K; k >= 0; --k) {
+    int last_iteration
+      = exp(log(chainK_length)
+	    + k * (log(chain0_length) - log(chainK_length)) / K);
+    int iteration;
 
-  MECALL(logfilename, strlen(prefix) + 6, char);
-  strcpy(logfilename, prefix);
-  strcat(logfilename, ".log");
+    int first_sample = k == 0 ? 0 : last_iteration*B;
+    int sample_interval = last_iteration / num_samples;
 
-  OPENFILE_OR_DIE(strfp, strfilename, "w");
-  OPENFILE_OR_DIE(logfp, logfilename, "w");
+    mcmc_chain *next = chain_create(chain, T[k], K, num_samples,
+				    proposal, dt, ess, param_cost);
 
-  fprintf(logfp, "state\tlog posterior\n");
+    MECALL(strfilename, strlen(prefix) + 15, char);
+    if (k == 0)
+      sprintf(buf, "%s.str", prefix);
+    else
+      sprintf(buf, "%s_chain%d.str", prefix, k);
+    strcpy(strfilename, buf);
 
-  for (iteration = 0; iteration < last_iteration; ++iteration) {
-    int k;
-    mcmc_chain *chain = NULL;
+    MECALL(logfilename, strlen(prefix) + 15, char);
+    if (k == 0)
+      sprintf(buf, "%s.log", prefix);
+    else
+      sprintf(buf, "%s_chain%d.log", prefix, k);
+    strcpy(logfilename, buf);
 
-    for (k = K; k >= 0; --k) {
-      if (iteration == (K-k)*(B+N)) {
-	mcmc_chain *next
-	  = chain_create(chain, T[k], K, chain_length-B, sample_interval,
-			 proposal, dt, ess, param_cost);
-	if (chainK == NULL)
-	  chainK = next;
-      }
+    OPENFILE_OR_DIE(strfp, strfilename, "w");
+    OPENFILE_OR_DIE(logfp, logfilename, "w");
 
-      if (K == k)
-	chain = chainK;
-      else
-	chain = chain->next;
+    fprintf(logfp, "state\tlog posterior");
+    for (i = 0; i < proposal->nodecount; ++i) {
+      fprintf(logfp, "\t%d_children\t%d_parents", i, i);
+    }
+    fprintf(logfp, "\n");
 
-      if (!chain)
-	break;
+    if (chainK == NULL)
+      chainK = next;
 
-      if (iteration >= last_iteration - k*(B+N))
-	continue;
+    chain = next;
 
+    for (iteration = 0; iteration <= last_iteration; ++iteration) {
       int doEEStep = 0;
       energy_ring *ring;
 
@@ -532,8 +534,8 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 	propose_step(chain->current, proposal, &sinfo, chain->nb_size,
 		     maxtblsize);
 
-	new_score = calc_score(proposal, dt, chain->current_score, sht, &sinfo,
-			       chain->scoreboard, ess, param_cost);
+	new_score = calc_score(proposal, dt, chain->current_score, sht,
+			       &sinfo, chain->scoreboard, ess, param_cost);
 
 	mh = calc_mh(proposal, chain->current_score, new_score, &sinfo,
 		     chain->nb_size, T[k], H[k]);
@@ -554,8 +556,8 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 	  bane *sw;
 	  unsigned *nbsw;
 
-	  complete_step(proposal, dt, chain->current_score, chain->scoreboard,
-			&sinfo, ess, param_cost);
+	  complete_step(proposal, dt, chain->current_score,
+			chain->scoreboard, &sinfo, ess, param_cost);
 
 	  /* swap current - proposal */
 	  sw = chain->current;
@@ -578,21 +580,19 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 	}
       }
 
-      if (iteration % sample_interval == 0) {
+      if (iteration >= first_sample && (iteration % sample_interval == 0)) {
 	double mh_ar, ee_ar, ee_av;
 
-	if ((iteration >= (K-k)*(B+N) + B)) {
-	  if (chain->energy_rings) {
-	    int I = get_ring_index(chain->current_score, H, K);
-	    ring = chain->energy_rings + I;
+	if (chain->energy_rings) {
+	  int I = get_ring_index(chain->current_score, H, K);
+	  ring = chain->energy_rings + I;
 
-	    ring->sample_score[ring->num_samples] = chain->current_score;
-	    memcpy(ring->sample_mx + ring->num_samples * ring->struct_size,
-		   chain->current->pmx->mx,
-		   sizeof(unsigned) * ring->struct_size);
+	  ring->sample_score[ring->num_samples] = chain->current_score;
+	  memcpy(ring->sample_mx + ring->num_samples * ring->struct_size,
+		 chain->current->pmx->mx,
+		 sizeof(unsigned) * ring->struct_size);
 
-	    ++ring->num_samples;
-	  }
+	  ++ring->num_samples;
 	}
 
 	mh_ar = (double)(chain->mh_accepts + chain->mh_eless)
@@ -610,18 +610,21 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 	  fprintf(stderr, ", ee: %g [av: %g]", ee_ar, ee_av);
 	fprintf(stderr, ")\n");
 
-	if (k == 0) {
-	  fprintf(logfp, "%d\t%g\n", iteration - K*(B+N),
-		  chain->current_score);
-	  fprintf(strfp, "state %d\n", iteration - K*(B+N));
-	  bane_write_structure(chain->current, strfp);
+	fprintf(logfp, "%d\t%g", iteration, chain->current_score);
+	for (i = 0; i < chain->current->nodecount; ++i) {
+	  node* nodi = chain->current->nodes + i;
+	  fprintf(logfp, "\t%d\t%d", nodi->childcount, nodi->parentcount);
 	}
+	fprintf(logfp, "\n");
+
+	fprintf(strfp, "state %d\n", iteration);
+	bane_write_structure(chain->current, strfp);
       }
     }
-  }
 
-  CLOSEFILE_OR_DIE(logfp, logfilename);
-  CLOSEFILE_OR_DIE(strfp, strfilename);
+    CLOSEFILE_OR_DIE(logfp, logfilename);
+    CLOSEFILE_OR_DIE(strfp, strfilename);
+ }
 
   {
     int i, k;
@@ -685,8 +688,10 @@ int main(int argc, char* argv[]){
   data* dt;
   format* fmt;
   double ess;
-  int chain_length, sample_interval;
-  int K, B, N;
+  int chain0_length, chainK_length;
+  int num_samples;
+  int K;
+  double B;
   double H0, Hc, Tc, pee;
   char *statfilename;
   FILE *statfp;
@@ -697,7 +702,7 @@ int main(int argc, char* argv[]){
   if (argc != 16) {
     fprintf(stderr,
 	    "Usage: %s vdfile datafile datacount ess "
-	    "param_cost chain_length samples K pburnin min_ring_samples "
+	    "param_cost chain0_length chainK_length num_samples K pburnin "
 	    "H0 Hc Tc pee result_prefix\n", 
 	    argv[0]);
     exit(-1);
@@ -716,12 +721,12 @@ int main(int argc, char* argv[]){
   ess = atof(argv[4]);
   param_cost = atof(argv[5]);
 
-  chain_length = atoi(argv[6]);
-  sample_interval = chain_length / atoi(argv[7]);
+  chain0_length = atoi(argv[6]);
+  chainK_length = atoi(argv[7]);
+  num_samples = atoi(argv[8]);
 
-  K = atoi(argv[8]);
-  B = atof(argv[9]) * chain_length;
-  N = atoi(argv[10]) * sample_interval;
+  K = atoi(argv[9]);
+  B = atof(argv[10]);
 
   H0 = atof(argv[11]);
   Hc = atof(argv[12]);
@@ -746,21 +751,21 @@ int main(int argc, char* argv[]){
   fprintf(statfp, "\n\n");
 
   fprintf(statfp,
-	  "   chain_length: %d\n"
-	  "sample_interval: %d\n"
+	  "  chain_lengths: %d - %d\n"
+	  "    num_samples: %d\n"
 	  "              K: %d\n"
-	  "              B: %d\n"
-	  "              N: %d\n"
+	  "              B: %g\n"
 	  "             H0: %g\n"
 	  "             Hc: %g\n"
 	  "             Tc: %g\n"
 	  "            pee: %g\n\n",
-	  chain_length, sample_interval, K, B, N, H0, Hc, Tc, pee);
+	  chain0_length, chainK_length, num_samples, K, B,
+	  H0, Hc, Tc, pee);
 
   TRACK_OFFSPRING_COUNT = 1;
 
-  sample(fmt, dt, ess, 10000, chain_length, sample_interval,
-	 K, B, N, H0, Hc, Tc, pee, argv[15], statfp);
+  sample(fmt, dt, ess, 10000, chain0_length, chainK_length, num_samples,
+	 K, B, H0, Hc, Tc, pee, argv[15], statfp);
 
   CLOSEFILE_OR_DIE(statfp, statfilename);
 
