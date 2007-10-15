@@ -312,6 +312,7 @@ typedef struct mcmc_chain {
   int ee_eless;
   int ee_na;
   int ee_ok;
+  int ee_size;
 
 } mcmc_chain;
 
@@ -347,9 +348,18 @@ static mcmc_chain *chain_create(mcmc_chain *prev, double T, int K,
 
   chain->mh_accepts = chain->mh_rejects = chain->mh_eless = 0;
   chain->ee_accepts = chain->ee_rejects = chain->ee_eless = 0;
-  chain->ee_na = chain->ee_ok = 0;
+  chain->ee_na = chain->ee_ok = chain->ee_size = 0;
 
   return chain;
+}
+
+static void chain_free_samples(mcmc_chain *chain, int K)
+{
+  int r;
+  for (r = 0; r < K+1; ++r) {
+    free(chain->energy_rings[r].sample_mx);
+    free(chain->energy_rings[r].sample_score);
+  }
 }
 
 static int get_ring_index(double score, double *H, int K)
@@ -441,9 +451,15 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
   fflush(statfp);
 
   for (k = K; k >= 0; --k) {
+    double t;
+    if (k == K)
+      t = 1;
+    else
+      t = (double)k/K * 0.5;
+
     int last_iteration
       = exp(log(chainK_length)
-	    + k * (log(chain0_length) - log(chainK_length)) / K);
+	    + t * (log(chain0_length) - log(chainK_length)));
     int iteration;
 
     int first_sample = k == 0 ? 0 : last_iteration*B;
@@ -489,6 +505,7 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 	ring = chain->prev->energy_rings + I;
 	if (ring->num_samples) {
 	  ++chain->ee_ok;
+	  chain->ee_size += ring->num_samples;
 	  doEEStep = drand48() < pee;
 	} else
 	  ++chain->ee_na;
@@ -581,7 +598,7 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
       }
 
       if (iteration >= first_sample && (iteration % sample_interval == 0)) {
-	double mh_ar, ee_ar, ee_av;
+	double mh_ar, ee_ar, ee_av, ee_si;
 
 	if (chain->energy_rings) {
 	  int I = get_ring_index(chain->current_score, H, K);
@@ -603,11 +620,13 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 
 	ee_av = (double)(chain->ee_ok) / (chain->ee_ok + chain->ee_na);
 
+	ee_si = (double)(chain->ee_size) / chain->ee_ok;
+
 	fprintf(stderr, "[%d, %d, %g]: %g (mh: %g",
 		iteration, k, H[k], chain->current_score,
 		mh_ar);
 	if (chain->ee_accepts + chain->ee_eless + chain->ee_rejects)
-	  fprintf(stderr, ", ee: %g [av: %g]", ee_ar, ee_av);
+	  fprintf(stderr, ", ee: %g [av: %g : %g]", ee_ar, ee_av, ee_si);
 	fprintf(stderr, ")\n");
 
 	fprintf(logfp, "%d\t%g", iteration, chain->current_score);
@@ -621,6 +640,9 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 	bane_write_structure(chain->current, strfp);
       }
     }
+
+    if (chain->prev)
+      chain_free_samples(chain->prev, K);
 
     CLOSEFILE_OR_DIE(logfp, logfilename);
     CLOSEFILE_OR_DIE(strfp, strfilename);
@@ -660,7 +682,7 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
     chain = chain0;
 
     for (k = 0; k <= K; ++k) {
-      double mh_ar, ee_ar, ee_av;
+      double mh_ar, ee_ar, ee_av, ee_si;
 
       mh_ar = (double)(chain->mh_accepts + chain->mh_eless)
 	/(chain->mh_accepts + chain->mh_eless + chain->mh_rejects);
@@ -670,10 +692,12 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 
       ee_av = (double)(chain->ee_ok) / (chain->ee_ok + chain->ee_na);
 
+      ee_si = (double)(chain->ee_size) / chain->ee_ok;
+
       fprintf(statfp, "Accept-ratios chain %d: mh: %g", k, mh_ar);
 
       if (k != K)
-	fprintf(statfp, ", ee: %g (av: %g)", ee_ar, ee_av);
+	fprintf(statfp, ", ee: %g (av %g : %g)", ee_ar, ee_av, ee_si);
       fprintf(statfp, "\n");
 
       chain = chain->prev;
