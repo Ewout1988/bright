@@ -365,6 +365,7 @@ void propagate_path_change_down(bane* bn, node* me, int* new_parent_counts,
   }
 
   me->path_to_me_count[me->id] = 0;
+  --me->ancestorcount;
 
   /*
   fprintf(stderr, "-- after\n");
@@ -431,6 +432,7 @@ void bane_add_arc_complete(bane* bn, arc* ar){
   fprintf(stderr, "\nadd: %d -> %d\n\n", ar->from, ar->to);
   bane_write_structure(bn, stderr);
   node_write(from, bn->nodecount, stderr);
+  node_write(to, bn->nodecount, stderr);
   */
 
   for (i = 0; i < bn->nodecount; ++i)
@@ -438,6 +440,11 @@ void bane_add_arc_complete(bane* bn, arc* ar){
 
   propagate_path_change_down(bn, to, from->path_to_me_count, from->id,
 			     to->id, 1);
+
+  /*
+  node_write(from, bn->nodecount, stderr);
+  node_write(to, bn->nodecount, stderr);
+  */
 
   if (TRACK_OFFSPRING_COUNT)
     propagate_path_change_up(bn, from);
@@ -822,3 +829,65 @@ int bane_param_count(bane *bn) {
     }
 #endif
 
+void find_ancestors(bane *bn, node *me, int *ancestors)
+{
+  int c = -1;
+  node* ch = NULL;
+
+  /* and then propagate to parents */
+  ch = FIRST_PARENT(bn, me, c);
+  while(c!=-1) {
+    ancestors[ch->id] = 1;
+    find_ancestors(bn, ch, ancestors);
+    ch = NEXT_PARENT(bn, me, c);
+  }  
+}
+
+void find_offspring(bane *bn, node *me, int *offspring)
+{
+  int c = -1;
+  node* ch = NULL;
+
+  /* and then propagate to parents */
+  ch = FIRST_CHILD(bn, me, c);
+  while(c!=-1) {
+    offspring[ch->id] = 1;
+    find_offspring(bn, ch, offspring);
+    ch = NEXT_CHILD(bn, me, c);
+  }  
+}
+
+void bane_check(bane *bn) {
+  int i;
+  int ancestors[bn->nodecount];
+  int offspring[bn->nodecount];
+
+  for (i=0; i < bn->nodecount; ++i) {
+    node *nodei = bn->nodes + i;
+    int acount = 0, ocount = 0;
+    int k;
+
+    for (k=0; k < bn->nodecount; ++k) {
+      ancestors[k] = 0;
+      offspring[k] = 0;
+    }
+
+    find_ancestors(bn, nodei, ancestors);
+    find_offspring(bn, nodei, offspring);
+
+     for (k=0; k < bn->nodecount; ++k) {
+       if (ancestors[k]) ++acount;
+       if (offspring[k]) ++ocount;
+    }
+
+     if (acount != nodei->ancestorcount) {
+       fprintf(stderr, "node %d: ancestorcount wrong: %d instead of %d\n",
+	       i, nodei->ancestorcount, acount);
+       bane_write_structure(bn, stderr);
+     }
+
+    if (ocount != nodei->offspringcount)
+      fprintf(stderr, "node %d: offpsringcount wrong: %d instead of %d\n",
+	      i, nodei->offspringcount, ocount);
+  }
+}

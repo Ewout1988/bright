@@ -117,6 +117,9 @@ bane_arc_count(bane *bn);
 extern int
 bane_param_count(bane *bn);
 
+extern void
+bane_check(bane *bn);
+
 #endif
 
 
