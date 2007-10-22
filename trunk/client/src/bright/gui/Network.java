@@ -15,16 +15,23 @@ import java.io.LineNumberReader;
 import java.io.PrintStream;
 import java.net.MalformedURLException;
 import java.rmi.RemoteException;
-import java.text.DateFormat;
-import java.text.ParseException;
 import java.util.ArrayList;
-import java.util.Date;
 
 import net.sf.wts.client.WtsClient;
 
 import org.jdom.Element;
 
 import bright.obb.IApplet;
+
+/*
+ * Subclass in:
+ *  - LearnedNetwork
+ *  - ConsensusNetwork
+ *
+ * subclasses have different properties, specialized xml I/O
+ *
+ * make new class NetworkSet: constains list of learned networks
+ */
 
 /**
  * @author kdforc0
@@ -35,12 +42,14 @@ public class Network {
 		String[] values;
 		ArrayList<Integer> parents;
         ArrayList<Double> weights;
+        ArrayList<Double> supports;
         
 		public Variable(String name) {
 			this.name = name;
 			this.values = null;
 			this.parents = new ArrayList<Integer>();
             this.weights = null;
+            this.supports = null;
 		}
 
 		public void setParents(int[] parents) {
@@ -76,86 +85,50 @@ public class Network {
 
             throw new RuntimeException("setWeight called for non-existing arc from parent " + from);
         }
+
+        public void setSupport(int from, double support) {
+            if (supports == null) {
+                supports = new ArrayList<Double>(parents.size());
+                for (int i = 0; i < parents.size(); ++i)
+                    supports.add(0.);
+            }
+            
+            for (int i = 0; i < parents.size(); ++i)
+                if (parents.get(i) == from) {
+                    if (supports.size() == i)
+                        supports.add(support);
+                    else
+                        supports.set(i, support);
+                    return;
+                }
+
+            throw new RuntimeException("setSupport called for non-existing arc from parent " + from);
+        }
+
+        public boolean hasParent(int p) {
+            for (int i = 0; i < parents.size(); ++i)
+                if (parents.get(i) == p)
+                    return true;
+
+            return false;
+        }
 	}
 
-    public static class Properties {
-        private String description;
-        private Date computed;
-        private double score;
-        private long evaluations;
-        private Learner.Properties learnerProperties;
-        
-        public String toString() {
-            return description + " (" + computed + ")";
-        }
+	protected ArrayList<Variable> variables;
 
-        public Date getComputed() {
-            return computed;
-        }
-
-        public void setComputed(Date computed) {
-            this.computed = computed;
-        }
-
-        public String getDescription() {
-            return description;
-        }
-
-        public void setDescription(String description) {
-            this.description = description;
-        }
-        
-        public Properties(String description, Date computed, Learner.Result result, Learner.Properties learnerProperties)
-        {
-            this.description = description;
-            this.computed = computed;
-            this.score = result.score;
-            this.evaluations = result.evaluations;
-            this.learnerProperties = learnerProperties;
-        }
-        
-        public Properties()
-        { }
-
-        public Learner.Properties getLearnerProperties() {
-            return learnerProperties;
-        }
-
-        public double getScore() {
-            return score;
-        }
-
-        public void setScore(double score) {
-            this.score = score;
-        }
-
-        public long getEvaluations() {
-            return evaluations;
-        }
-
-        public void setEvaluations(long evaluations) {
-            this.evaluations = evaluations;
-        }
-    }
-    
-	private ArrayList<Variable> variables;
-    private Properties properties;
-
-    public Network(Properties properties, File strFile, File vdFile) throws FileNotFoundException, IOException { 
-        this(properties, new FileInputStream(strFile), new FileInputStream(vdFile));
+    public Network(File strFile, File vdFile) throws FileNotFoundException, IOException { 
+        this(new FileInputStream(strFile), new FileInputStream(vdFile));
     }
 
-	public Network(Properties properties, InputStream strFile, InputStream vdFile) throws IOException {
-        this.properties = properties;
-
+	public Network(InputStream strFile, InputStream vdFile) throws IOException {
         readVariables(vdFile);
 		readStructure(strFile);
 	}
 
-    public String toString() {
-        return properties.toString();
+    public Network(Network template) {
+        this(template.variables);
     }
-    
+
     public void computeWeights(Project project) throws ApplicationException {
         String idtFile = project.getIdtFile();
         String vdFile = project.getVdFile();
@@ -177,7 +150,7 @@ public class Network {
         try {
             String cmds[] = { Settings.getSettings().getLearnerDir() + "arcweights", vdFile, idtFile,
                     String.valueOf(project.getNumInstances()), strFile.getAbsolutePath(),
-                    String.valueOf(properties.getLearnerProperties().getEss()) };
+                    String.valueOf(getEss()) };
 
             arcweights = runtime.exec(cmds, null, projectDir);
 
@@ -202,10 +175,13 @@ public class Network {
         }
     }
 
-    public Network(ArrayList variables) {
+    public Network(InputStream vdFile) throws IOException {
+        readVariables(vdFile);
+    }
+
+    public Network(ArrayList<Variable> variables) {
 		this.variables = new ArrayList<Variable>();
-		for (int i = 0; i < variables.size(); ++i) {
-			Variable v = (Variable) variables.get(i);
+		for (Variable v:variables) {
 			this.variables.add(new Variable(v.name));
 		}
 	}
@@ -213,10 +189,14 @@ public class Network {
     private void readStructure(InputStream strFile) throws NumberFormatException, IOException {
 		LineNumberReader r = new LineNumberReader(new InputStreamReader(strFile));
 
-		String line = null;
-		r.readLine(); // read line with number of variables.
+		readStructure(r);
+	}
+
+    public void readStructure(LineNumberReader reader) throws IOException {
+        String line = null;
+		reader.readLine(); // read line with number of variables.
 		int v = 0;
-		while ((line = r.readLine()) != null) {
+		while ((line = reader.readLine()) != null) {
 			String[] l = line.split(" ");
 
 			int numParents = Integer.parseInt(l[1]);
@@ -228,8 +208,11 @@ public class Network {
 			
 			variables.get(v).setParents(parents);
 			++v;
+            
+            if (v >= variables.size())
+                break;
 		}
-	}
+    }
 
 	private void readVariables(InputStream vdFile) throws IOException {
 		variables = new ArrayList<Variable>();
@@ -275,21 +258,21 @@ public class Network {
         }
     }
 
-	public boolean addArc(int i, int j) {
-		Variable v = variables.get(j);
-		if (v.addParent(i)) {
-			/*
-			 * check for cycles, knowing we didn't have any yet.
-			 * we have a cycle if there is a path from j to i.
-			 */
-			if (findPath(j, i)) {
-				v.removeParent(i);
-				return false;
-			} else
-				return true;
-		} else {
-			return false; // was already in the network
-		}
+	public boolean addArc(int i, int j, boolean directed) {
+       if (directed && findPath(j, i)) {
+            return false;
+        } else {
+            if (!directed) { /* see if there is already an arc from j to i */
+                Variable v = variables.get(i);
+                if (v.hasParent(j))
+                    return false;
+            }
+            Variable v = variables.get(j);
+            if (v.addParent(i)) {
+                return true;
+            } else
+                return false;
+        }
 	}
 
 	private boolean findPath(int j, int i) {
@@ -323,8 +306,17 @@ public class Network {
         f.close();
     }
 
-    public void writeDot(PrintStream o, String title, boolean weights) {
-        o.println("digraph \"" + title + "\" {");
+    public void writeDot(PrintStream o, String title, boolean directed) {
+        String edgeop;
+
+        if (directed) {
+            o.println("digraph \"" + title + "\" {");
+            edgeop = "->";
+        } else {
+            o.println("graph \"" + title + "\" {");
+            edgeop = "--";
+        }
+
         o.println("  margin=\"0.1,0.1\"");
         o.println("  clusterrand=none;");
         o.println("  ratio=auto;");
@@ -340,9 +332,13 @@ public class Network {
             Variable v = variables.get(j);
             
             for (int i = 0; i < v.parents.size(); ++i) {
-                o.print("    " + v.parents.get(i) + " -> " + j);
-                if (weights && v.weights != null) {
-                    o.print(" [weight=2 color=\"" + dotWeightColor(v.weights.get(i)) + "\"]");
+                o.print("    " + v.parents.get(i) + edgeop + j);
+                if (v.weights != null) {
+                    o.print(" [color=\"" + dotWeightColor(v.weights.get(i)) + "\"]");
+                }
+                if (v.supports != null) {
+                    o.print(" [color=\"" + dotSupportColor(v.supports.get(i))
+                            + "\" label=\"" + (int)(100*v.supports.get(i) + 0.5) + "\"]");
                 }
                 o.println(";");
             }
@@ -351,11 +347,13 @@ public class Network {
         o.println("}");
     }
     
-    public void writeDot(String dotFile, String title, boolean weights) throws FileNotFoundException {
-        PrintStream f = new PrintStream(dotFile);
-        writeDot(f, title, weights);
-        f.flush();
-        f.close();        
+    public void writeDot(String dotFile, Project project) throws FileNotFoundException, ApplicationException
+    {
+        //FIXME
+    }
+
+    private static String dotSupportColor(double support) {
+        return "0,0," + (1-support);
     }
 
     private static String dotWeightColor(double w) {
@@ -380,7 +378,7 @@ public class Network {
             save(strFile);
             optionsFile = File.createTempFile("bright", ".options");
             PrintStream s = new PrintStream(optionsFile);
-            s.println("ESS=" + properties.getLearnerProperties().getEss());
+            s.println("ESS=" + getEss());
             s.flush();
             s.close();
 
@@ -457,10 +455,9 @@ public class Network {
 
     public void renderToSvg(Project project, File svgFile) throws ApplicationException {
         try {
-            computeWeights(project);
             File dotFile = File.createTempFile("bright", ".dot");        
             File svgTempFile = File.createTempFile("bright", ".svg");        
-            writeDot(dotFile.getAbsolutePath(), "weights", true);
+            writeDot(dotFile.getAbsolutePath(), project);
 
             String cmds[] = { Settings.getSettings().getDotPath(), "-Tsvg", "-o",
                     svgTempFile.getAbsolutePath(), dotFile.getAbsolutePath() };
@@ -491,52 +488,42 @@ public class Network {
         }
     }
 
-    public Properties getProperties() {
-        return properties;
+    public Network(Element xml, String vdFile) throws FileNotFoundException, IOException, ApplicationException { 
+        this(xml, vdFile == null ? null : new FileInputStream(vdFile));
     }
 
-    public Network(Element xml) throws ApplicationException {
-        Element propertiesE = xml.getChild("Properties");
-
-        if (propertiesE != null) {
-            properties = new Properties();
-
-            properties.description = propertiesE.getChild("Description").getTextTrim();
-            Element computedE = propertiesE.getChild("Computed");
-            if (computedE != null) {
-                try {
-                    properties.computed = DateFormat.getDateTimeInstance().parse(computedE.getChild("Date").getTextTrim());
-                    properties.learnerProperties = new Learner.Properties(computedE);
-                    properties.score = Double.parseDouble(computedE.getChild("Score").getTextTrim());
-                    properties.evaluations = Long.parseLong(computedE.getChild("Evaluations").getTextTrim());
-                } catch (ParseException e) {
-                    System.err.println("Error parsing date: " + computedE.getChild("Date").getTextTrim());
-                    properties.computed = null;
-                }
+    public Network(Element xml, InputStream vdFile) throws ApplicationException {
+        if (vdFile != null)
+            try {
+                readVariables(vdFile);
+            } catch (IOException e1) {
+                e1.printStackTrace();
+                throw new ApplicationException("Error reading vd-file:" + e1.getMessage());
             }
-        }
-
+        
         Element variablesE = xml.getChild("Variables");
 
-        if (variablesE == null)
-            throw new ApplicationException("Expecting <Variables> element.");
-        
-        variables = new ArrayList<Variable>();
-        for (Object vo:variablesE.getChildren("Variable")) {
-            Element vE = (Element) vo;
+        if (variablesE == null) {
+            if (variables == null)
+                throw new ApplicationException("Expecting <Variables> element.");
+        } else {
+            variables = new ArrayList<Variable>();
+            for (Object vo:variablesE.getChildren("Variable")) {
+                Element vE = (Element) vo;
 
-            Variable v = new Variable(vE.getChildTextTrim("Name"));
+                Variable v = new Variable(vE.getChildTextTrim("Name"));
 
-            Element valuesE = vE.getChild("Values");
-            ArrayList<String> values = new ArrayList<String>();
-            for (Object vvo:valuesE.getChildren("Value")) {
-                Element vvE = (Element) vvo;
-                values.add(vvE.getTextTrim());
+                Element valuesE = vE.getChild("Values");
+                ArrayList<String> values = new ArrayList<String>();
+                for (Object vvo:valuesE.getChildren("Value")) {
+                    Element vvE = (Element) vvo;
+                    values.add(vvE.getTextTrim());
+                }
+                
+                v.values = values.toArray(new String[values.size()]);
+                
+                variables.add(v);
             }
-            
-            v.values = values.toArray(new String[values.size()]);
-            
-            variables.add(v);
         }
 
         Element structureE = xml.getChild("Structure");
@@ -568,17 +555,7 @@ public class Network {
 
         Element result = new Element("Network");
         
-        Element propertiesE = new Element("Properties"); result.addContent(propertiesE);
-        e = new Element("Description"); e.setText(properties.description); propertiesE.addContent(e);
-        
-        if (properties.computed != null) {
-            Element computedE = new Element("Computed"); propertiesE.addContent(computedE);
-            e = new Element("Date"); e.setText(DateFormat.getDateTimeInstance().format(properties.computed)); computedE.addContent(e);
-            properties.learnerProperties.saveXML(computedE);
-            e = new Element("Score"); e.setText(Double.toString(properties.score)); computedE.addContent(e);
-            e = new Element("Evaluations"); e.setText(Long.toString(properties.evaluations)); computedE.addContent(e);
-        }
-
+        /*
         Element variablesE = new Element("Variables"); result.addContent(variablesE);
         
         for (Variable v:variables) {
@@ -589,6 +566,7 @@ public class Network {
                 e = new Element("Value"); e.setText(vv); valuesE.addContent(e);
             }            
         }
+        */
 
         Element structureE = new Element("Structure"); result.addContent(structureE);
 
@@ -613,5 +591,19 @@ public class Network {
             result += v.parents.size();
         }
         return result;
+    }
+    
+    public double getEss() {
+        return 1.;
+    }
+
+    public ArrayList<Variable> getVariables() {
+        return variables;
+    }
+    
+    public String detailsHtml() {
+        return "<html><table>"
+            + "<tr><td><b>Arcs:</b></td><td>" + getArcCount() + "</td></tr>"
+            + "</table></html>";
     }
 }

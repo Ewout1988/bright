@@ -55,9 +55,9 @@ public class Project {
             networks = new ArrayList<Network>();
 
             Element networksE = root.getChild("Networks");
-            for (Object neo:networksE.getChildren("Network")) {
+            for (Object neo:networksE.getChildren("LearnedNetwork")) {
                 Element ne = (Element) neo;
-                networks.add(new Network(ne));
+                networks.add(new LearnedNetwork(ne, getVdFile()));
             }
          } catch (JDOMException e) {
             throw new ApplicationException(e.getMessage());

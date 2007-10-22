@@ -11,6 +11,7 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
+import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.BufferedInputStream;
@@ -31,8 +32,10 @@ import javax.swing.BoxLayout;
 import javax.swing.DefaultListModel;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JDialog;
 import javax.swing.JFileChooser;
+import javax.swing.JFormattedTextField;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
@@ -44,6 +47,8 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.ListSelectionModel;
 import javax.swing.UIManager;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.filechooser.FileFilter;
@@ -68,6 +73,16 @@ public class Bright extends JPanel {
             return "Bright project (bright.xml) files";
         } };
 
+    private static final FileFilter strsFileFilter = new FileFilter() {
+            public boolean accept(File f) {
+                return f.getName().endsWith("strs")
+                    || f.getName().endsWith("STRS")
+                    || f.isDirectory();
+            }
+            public String getDescription() {
+                return "Bright MCMC newtork structure files (.strs)";
+            } };
+
     private static final String ABOUT_MESSAGE = "B-Right 0.1 (c) 2007 Koen Deforche, Tomi Silander\n"
           + "\n"
           + "Contact:\n"
@@ -87,20 +102,7 @@ public class Bright extends JPanel {
 
     private JLabel status;
 
-    private JLabel scoreField;
-    private JLabel arcCountField;
-
-    private JLabel evaluationsField;
-
-    private JLabel learnerField;
-
-    private JLabel essField;
-
-    private JLabel extraParameterCostField;
-
-    private JLabel iterationsField;
-
-    private JLabel coolingsField;
+    private JLabel networkDetails;
 
     public Bright(JFrame frame) {
         project = null;
@@ -220,8 +222,8 @@ public class Bright extends JPanel {
                 JDialog d = new LearnerDialog(project, Bright.this, topframe);
                 d.setVisible(true);
             }
-        });        
-        
+        });
+
         haveNetworkItems.add(menuItem = new JMenuItem("Inference..."));
         menu.add(menuItem);
         menuItem.addActionListener(new ActionListener() {
@@ -234,7 +236,135 @@ public class Bright extends JPanel {
                 }
             }
         });
-        
+
+        menu = new JMenu("MCMC");
+        menuBar.add(menu);
+
+        haveDataItems.add(menuItem = new JMenuItem("Sample..."));
+        menu.add(menuItem);
+        menuItem.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent ae) {
+                JOptionPane.showMessageDialog(Bright.this,
+                        "MCMC sampling is not yet integrated in the GUI.",
+                        "Not yet implemented", JOptionPane.INFORMATION_MESSAGE);
+            }
+        });
+
+        haveDataItems.add(menuItem = new JMenuItem("Create consensus..."));
+        menu.add(menuItem);
+        menuItem.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent ae) {
+                fc.setFileSelectionMode(JFileChooser.FILES_ONLY);
+                fc.setFileFilter(strsFileFilter);
+
+                int returnVal = fc.showOpenDialog(Bright.this);
+                if (returnVal == JFileChooser.APPROVE_OPTION) {
+                    File file = fc.getSelectedFile();
+                    try {
+                        final NetworkSet set = new NetworkSet(file, new File(project.getVdFile()));
+                        
+                        final JDialog d = new JDialog(topframe, true);
+                        d.setTitle("Create consensus network");
+
+                        final JLabel text = new JLabel(file.getName() + " contains " + set.getNetworks().size() + " networks");
+                        
+                        final JFormattedTextField descriptionField = new JFormattedTextField();
+                        descriptionField.setValue("Consensus of " + file.getName());
+                        descriptionField.setColumns(20);
+
+                        final JFormattedTextField minimumSupportField = new JFormattedTextField();
+                        minimumSupportField.setValue(new Double(0.7));
+                        minimumSupportField.setColumns(4);
+                        
+                        final JCheckBox directed = new JCheckBox("Directed graph");
+                        directed.setSelected(false);
+
+                        final JCheckBox ignoreDirection = new JCheckBox("Ignore arc direction");
+                        ignoreDirection.setSelected(true);
+                        ignoreDirection.setEnabled(false);
+                        
+                        directed.addChangeListener(new ChangeListener() {
+                            public void stateChanged(ChangeEvent arg0) {
+                                if (directed.isSelected())
+                                    ignoreDirection.setEnabled(true);
+                                else {
+                                    ignoreDirection.setEnabled(false);
+                                    ignoreDirection.setSelected(true);
+                                }
+                            } });
+
+                        JPanel checkPane = new JPanel();
+                        checkPane.setLayout(new GridLayout(0, 1));
+                        checkPane.add(directed);
+                        checkPane.add(ignoreDirection);
+
+                        JPanel labelPane = new JPanel();
+                        labelPane.setLayout(new GridLayout(0, 1));
+
+                        labelPane.add(new JLabel("Description:"));
+                        labelPane.add(new JLabel("Minimum support (0.0 - 1.0):"));
+                        
+                        JPanel fieldPane = new JPanel();
+                        fieldPane.setLayout(new GridLayout(0, 1));
+                        fieldPane.add(descriptionField);
+                        fieldPane.add(minimumSupportField);
+
+                        JPanel settingsPane = new JPanel();
+                        settingsPane.setBorder(BorderFactory.createEmptyBorder(5, 10,
+                                                                               5, 10));
+                        settingsPane.setLayout(new BorderLayout());
+                        settingsPane.add(checkPane, BorderLayout.SOUTH);
+                        settingsPane.add(labelPane, BorderLayout.CENTER);
+                        settingsPane.add(fieldPane, BorderLayout.EAST);
+                        
+                        JPanel northPane = new JPanel();
+                        northPane.add(text);
+                        northPane.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+                        
+                        JButton okButton = new JButton("Ok");
+                        okButton.addActionListener(new ActionListener() {
+                            public void actionPerformed(ActionEvent e) {
+                                ConsensusNetwork n = set.computeConsensus(
+                                        (Double)minimumSupportField.getValue(), directed.isSelected(), ignoreDirection.isSelected());
+                                n.getProperties().setDescription((String)descriptionField.getValue());
+                                addNetwork(n);
+                                d.setVisible(false);
+                            } });
+                        
+                        JButton cancelButton = new JButton("Cancel");
+                        cancelButton.addActionListener(new ActionListener() {
+                            public void actionPerformed(ActionEvent e) {
+                                d.setVisible(false);
+                            } });                       
+                        
+                        JPanel buttonPane = new JPanel();
+                        buttonPane.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 0));
+                        
+                        buttonPane.add(okButton);
+                        buttonPane.add(cancelButton);
+
+                        JPanel topPane = new JPanel();
+                        topPane.setLayout(new BorderLayout());
+                        topPane.add(settingsPane, BorderLayout.CENTER);
+                        topPane.add(northPane, BorderLayout.NORTH);
+                        topPane.add(buttonPane, BorderLayout.SOUTH);
+
+                        d.setContentPane(topPane);        
+                        d.pack();
+                        d.setLocationRelativeTo(topframe);
+
+                        d.setVisible(true);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        JOptionPane.showMessageDialog(Bright.this,
+                                "I/O error reading file: '" + file.getAbsolutePath() + "': "+ e.getMessage(),
+                                "Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+            }
+        });
+
+
         menu = new JMenu("Settings");
         menuBar.add(menu);
         menuItem = new JMenuItem("Edit...");
@@ -373,38 +503,11 @@ public class Bright extends JPanel {
         JScrollPane listScroller = new JScrollPane(networkList);
         listScroller.setPreferredSize(new Dimension(250, 80));
 
-        JPanel labelPane = new JPanel();
-        labelPane.setLayout(new GridLayout(0, 1));
-        JPanel fieldPane = new JPanel();
-        fieldPane.setLayout(new GridLayout(0, 1));
-
-        labelPane.add(new JLabel("Learner:"));
-        fieldPane.add(learnerField = new JLabel());
-        labelPane.add(new JLabel("ESS:"));
-        fieldPane.add(essField = new JLabel());
-        labelPane.add(new JLabel("Extra parameter cost:"));
-        fieldPane.add(extraParameterCostField = new JLabel());
-        labelPane.add(new JLabel("Iterations:"));
-        fieldPane.add(iterationsField = new JLabel());
-        labelPane.add(new JLabel("Coolings:"));
-        fieldPane.add(coolingsField = new JLabel());
-        
-        labelPane.add(new JLabel("Score:"));
-        fieldPane.add(scoreField = new JLabel());
-        labelPane.add(new JLabel("Arc count:"));
-        fieldPane.add(arcCountField = new JLabel());
-        labelPane.add(new JLabel("Evaluations:"));
-        fieldPane.add(evaluationsField = new JLabel());
-        
-        JPanel detailsPane = new JPanel();
-        detailsPane.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-        detailsPane.setLayout(new BorderLayout());
-        detailsPane.add(labelPane, BorderLayout.CENTER);
-        detailsPane.add(fieldPane, BorderLayout.EAST);
+        networkDetails = new JLabel("");
         
         leftPanel.add("North", networksLabelPane);
         leftPanel.add("Center", listScroller);
-        leftPanel.add("South", detailsPane);
+        leftPanel.add("South", networkDetails);
 
         panel.add("West", leftPanel);
 
@@ -478,6 +581,8 @@ public class Bright extends JPanel {
     }
 
     private void showNetwork(Network network) {
+        networkDetails.setText("No network.");
+        
         if (network != null) {
             try {
                 File svgFile = File.createTempFile("bright", ".svg");
@@ -497,26 +602,10 @@ public class Bright extends JPanel {
                         "Error", JOptionPane.ERROR_MESSAGE);
                 e.printStackTrace();
             }
-            
-            scoreField.setText(Double.toString(network.getProperties().getScore()));
-            arcCountField.setText(Integer.toString(network.getArcCount()));
-            evaluationsField.setText(Long.toString(network.getProperties().getEvaluations()));
-            learnerField.setText("Simulated Annealing");
-            iterationsField.setText(Integer.toString(network.getProperties().getLearnerProperties().getIterations()));
-            coolingsField.setText(Integer.toString(network.getProperties().getLearnerProperties().getCoolings()));
-            essField.setText(Double.toString(network.getProperties().getLearnerProperties().getEss()));
-            extraParameterCostField.setText(Double.toString(network.getProperties().getLearnerProperties().getParameterCost()));
+
+            networkDetails.setText(network.detailsHtml());
         } else {
             svgNetwork.setDocument(null);
-            scoreField.setText("");
-            arcCountField.setText("");
-            evaluationsField.setText("");
-            learnerField.setText("");
-            iterationsField.setText("");
-            coolingsField.setText("");
-            essField.setText("");
-            extraParameterCostField.setText("");
-            
         }
     }
 
@@ -530,16 +619,11 @@ public class Bright extends JPanel {
 
     public void addLearnedNetwork(File structFile, String description, Learner.Result result) {
         try {
-            Network n = new Network(
-                    new Network.Properties(description, new Date(), result, project.getLearnerDefaults()),
+            LearnedNetwork n = new LearnedNetwork(
+                    new LearnedNetwork.Properties(description, new Date(), result, project.getLearnerDefaults()),
                     structFile, new File(project.getVdFile()));
 
-            project.addNetwork(n);
-            networkListModel.addElement(n);
-            networkList.setSelectedIndex(project.getNetworks().size() - 1);
-            showNetwork(n);
-
-            setEnabled(haveNetworkItems, project.getNetworks().size() != 0);
+            addNetwork(n);
         } catch (FileNotFoundException e) {
             JOptionPane.showMessageDialog(Bright.this,
                     "Error while accessing project files: " + e.getMessage(),
@@ -549,6 +633,18 @@ public class Bright extends JPanel {
                     "Error while reading project files: " + e.getMessage(),
                     "Error", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    /**
+     * @param n
+     */
+    private void addNetwork(Network n) {
+        project.addNetwork(n);
+        networkListModel.addElement(n);
+        networkList.setSelectedIndex(project.getNetworks().size() - 1);
+        showNetwork(n);
+
+        setEnabled(haveNetworkItems, project.getNetworks().size() != 0);
     }
 
     protected void deleteNetworks() {
@@ -634,6 +730,11 @@ public class Bright extends JPanel {
 
         //Display the window.
         frame.pack();
+        
+        Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
+        Dimension frameSize = frame.getPreferredSize();
+        frame.setLocation(screenSize.width/2 - (frameSize.width/2), screenSize.height/2 - (frameSize.height/2)); 
+
         frame.setVisible(true);
     }
 }
