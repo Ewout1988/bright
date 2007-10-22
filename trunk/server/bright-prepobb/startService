@@ -36,3 +36,4 @@ $bin/sst2dpa.pl $sst_file $ess $dpa_file 2>> $log_file
 rm "$running_file"
 
 echo "ENDED_SUCCES" > "$1/.ended"
+
