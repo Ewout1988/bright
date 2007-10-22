@@ -694,7 +694,7 @@ public class Bright extends JPanel {
             if (result == JOptionPane.YES_OPTION) {
                 if (!saveProject())
                     proceed = false;
-            } else if (result == JOptionPane.CANCEL_OPTION) {
+            } else if (result == JOptionPane.CANCEL_OPTION || result == JOptionPane.CLOSED_OPTION) {
                 proceed = false;
             }
         }
