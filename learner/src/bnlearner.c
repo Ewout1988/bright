@@ -317,14 +317,15 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 	scoreboard[ar->from] = from_score;
 	scoreboard[ar->to] = to_score;
 
-	/*
+	{
+	  double check;
 	  bane_gather_full_ss(stl->beba, dt);
 	  check = bane_get_score_param_costs(stl->beba, ess, scoreboard);
 	  if (fabsl(stl->best_score - check) > 1E-5) {
-	  fprintf(stderr, "WRONG! (%g)", stl->best_score - check);
-	  stl->best_score = check;
+	    fprintf(stderr, "WRONG! (%g)", stl->best_score - check);
+	    stl->best_score = check;
 	  }
-	*/
+	}
 
 	if (new_score > stg->best_score) {
 	  stg->best_score = new_score;
@@ -410,21 +411,17 @@ int main(int argc, char* argv[]){
   FILE* fp;
   int iterations, coolings;
 
-  if (argc != 11) {
+  if (argc != 10) {
     fprintf(stderr,
 	    "Usage: %s vdfile datafile datacount ess "
-	    "reportfile structfile iterations coolings param_cost pidfile\n", 
+	    "reportfile structfile iterations coolings param_cost\n", 
 	    argv[0]);
     exit(-1);
   }
 
   fclose(stdin);
-  fclose(stdout);
+  /* fclose(stdout); */
   /* fclose(stderr); */
-
-  OPENFILE_OR_DIE(fp, argv[argc-1], "w");
-  fprintf(fp,"%d\n",getpid());
-  CLOSEFILE_OR_DIE(fp, argv[argc-1]);
 
   fmt = format_cread(argv[1]);
 
