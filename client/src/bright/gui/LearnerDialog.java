@@ -217,6 +217,7 @@ public class LearnerDialog extends JDialog implements ProgressListener {
         configPane.add(lowPane, BorderLayout.SOUTH);
         setContentPane(configPane);        
         pack();
+        setLocationRelativeTo(frame);
     }
 
     private void showMessage(final String message) throws InterruptedException, InvocationTargetException {

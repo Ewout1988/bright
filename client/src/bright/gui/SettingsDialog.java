@@ -127,6 +127,7 @@ public class SettingsDialog extends JDialog {
         setContentPane(configPane);        
         
         pack();
+        setLocationRelativeTo(frame);
     }
 
     /**

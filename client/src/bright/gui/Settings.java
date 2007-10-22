@@ -109,6 +109,14 @@ public class Settings {
         Document document = new Document();
         document.setRootElement(root);
 
+        if (wtsProxyHost.length() > 0) {
+            System.setProperty("http.proxyHost", wtsProxyHost);
+            System.setProperty("http.proxyPort", wtsProxyPort);
+        } else {
+            System.clearProperty("http.proxyHost");
+            System.clearProperty("http.proxyPort");
+        }
+
         try {
             OutputStream fileStream = new FileOutputStream(settingsLocation());        
             XMLOutputter xml = new XMLOutputter("    ", true);
