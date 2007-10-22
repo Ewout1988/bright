@@ -149,6 +149,8 @@ public class LearnerDialog extends JDialog implements ProgressListener {
                             
                             try {
                                 final File structFile = File.createTempFile("bright", ".str");
+                                structFile.delete();
+
                                 Learner.Result result = learner.run(structFile);
                                 LearnerDialog.this.bright.addLearnedNetwork(structFile, description, result);
 

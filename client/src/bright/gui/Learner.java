@@ -112,14 +112,11 @@ public class Learner {
         
         try {
             File reportFile = File.createTempFile("bnlearn", ".stat", projectDir);
-            File pidFile = File.createTempFile("bnlearn", ".pid", projectDir);
-
-	    structFile.delete();
 
             String cmds[] = { Settings.getSettings().getLearnerDir() + "bnlearner", project.getVdFile(), project.getIdtFile(),
                     String.valueOf(project.getNumInstances()), String.valueOf(properties.getEss()),
                     reportFile.getAbsolutePath(), structFile.getAbsolutePath(), String.valueOf(properties.getIterations()),
-                    String.valueOf(properties.getCoolings()), String.valueOf(properties.getParameterCost()), pidFile.getAbsolutePath()};
+                    String.valueOf(properties.getCoolings()), String.valueOf(properties.getParameterCost())};
 
 
             learner = runtime.exec(cmds, null, projectDir);
@@ -137,7 +134,6 @@ public class Learner {
             String[] parts = s.split(" ");
 
             reportFile.delete();
-            pidFile.delete();
             
             return new Result(Double.valueOf(parts[4]), Long.valueOf(parts[0]));
         } catch (InterruptedIOException e) {
