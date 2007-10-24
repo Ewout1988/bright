@@ -417,7 +417,7 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 
   parent_matrix* tmp_pmx;
 
-  double max_score = -HUGE;
+  double max_score = -1E500;
   bane *proposal;
   bane *empty;
   struct step_aux_info sinfo;

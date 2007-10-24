@@ -20,6 +20,7 @@ struct node {
 
   int pcc;
   int N;
+  int dtN;
   int* ss;
   int* ssp;
 
