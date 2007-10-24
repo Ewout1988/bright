@@ -52,7 +52,7 @@ public class LearnedNetwork extends Network {
             this.computed = computed;
             this.score = result.score;
             this.evaluations = result.evaluations;
-            this.learnerProperties = learnerProperties;
+            this.learnerProperties = learnerProperties.clone();
         }
         
         public Properties()

@@ -84,6 +84,17 @@ public class Learner {
             ess = Double.valueOf(ppScore.getChild("Ess").getTextTrim());
             parameterCost = Double.valueOf(ppScore.getChild("ExtraParameterCost").getTextTrim());
         }
+        
+        public Properties clone() {
+            Properties result = new Properties();
+            
+            result.coolings = coolings;
+            result.ess = ess;
+            result.iterations = iterations;
+            result.parameterCost = parameterCost;
+            
+            return result;
+        }
     };
     
     public Learner(Project project, ProgressListener progress) {
@@ -156,6 +167,7 @@ public class Learner {
     private void doLogWindow(InputStream input) throws IOException {
         BufferedReader in
             = new BufferedReader(new InputStreamReader(input));
+        String message = "Starting";
         String s = null;
         do {
             s = in.readLine();
@@ -163,10 +175,12 @@ public class Learner {
                 try {
                     double d = Double.valueOf(s);
                     if (progress != null)
-                        progress.updateProgress(100 * d);
+                        progress.updateProgress(message, 100 * d);
                     else
                         System.err.println((d * 100) + "%");
                 } catch (NumberFormatException e) {
+                    message = s;
+                    progress.updateProgress(message, 0);                    
                 }
             }
         } while (s != null);

@@ -136,7 +136,7 @@ public class LearnerDialog extends JDialog implements ProgressListener {
                     runButton.setEnabled(false);
                     cancelButton.setEnabled(true);
                     progress.setValue(0);
-                    updateProgress(0);
+                    updateProgress("Starting", 0);
 
                     Runnable doRun;
                     learner = new Learner(project, LearnerDialog.this);
@@ -250,9 +250,10 @@ public class LearnerDialog extends JDialog implements ProgressListener {
     }
     
 
-    public void updateProgress(double percentage) {
+    public void updateProgress(String message, double percentage) {
         progress.setValue(Math.max(progress.getValue(), (int)percentage));
-        progress.setString(String.valueOf("Running: " + progress.getValue() + "%"));
+        progress.setString(
+                String.valueOf(message + (progress.getValue() > 0 ? ": " + progress.getValue() + "%" : "")));
     }
 }
 

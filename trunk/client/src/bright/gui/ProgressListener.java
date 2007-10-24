@@ -8,6 +8,6 @@ package bright.gui;
 
 public interface ProgressListener {
 
-    void updateProgress(double percentage);
+    void updateProgress(String message, double percentage);
     
 }
