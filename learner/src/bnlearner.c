@@ -222,6 +222,8 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 
   T = 1; // start from 1, and go up until accept ratio > 0.6
 
+  fprintf(stderr, "Calibrating...\n");
+
   for(;;) {
     int n_accepts = 0;
     int n_rejects = 0;
@@ -347,6 +349,10 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
     double acceptratio_b
       = (double)(n_eless)/(n_accepts + n_eless + n_rejects);
 
+    /* 
+       fprintf(stderr, "T = %g (%g, %g)\n", T, acceptratio_a, acceptratio_b);
+    */
+
     if (acceptratio_a > max_a)
       max_a = acceptratio_a;
     if (acceptratio_b > max_b)
@@ -356,6 +362,7 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
       if (acceptratio_a >= 0.6) {
 	// between 40 and 90: http://dx.doi.org/10.1016/S0045-7949(03)00214-1
 	calibrating = 0;
+	fprintf(stderr, "Learning\n");
 	T0 = T;
       } else {
 	T *= 1.1;
@@ -388,7 +395,7 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
       double p_a = 1 - (acceptratio_a - AR_A_CUTOFF)/(max_a - AR_A_CUTOFF);
       double p_b = 1 - (acceptratio_b - AR_B_CUTOFF)/(max_b - AR_B_CUTOFF);
 
-      double p = p_a < p_b ? p_a : p_b;
+      double p = p_b; /* p_a < p_b ? p_a : p_b; */
       double p_total = (double)Titerations/coolings + p/coolings;
 
       fprintf(stderr, "%g\n", p_total);
@@ -422,6 +429,8 @@ int main(int argc, char* argv[]){
   fclose(stdin);
   /* fclose(stdout); */
   /* fclose(stderr); */
+
+  fprintf(stderr, "Initializing...\n");
 
   fmt = format_cread(argv[1]);
 

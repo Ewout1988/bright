@@ -102,6 +102,7 @@ void bane_gather_ss_for_i(bane* bn, data* dt, int i){
     MECALL(nodi->ssp, nodi->pcc , int);
     
     nodi->N = 0;
+    nodi->dtN = dt->N;
     for(j=0; j<dt->N; ++j){
       ADD_SS(bn,nodi,dt,j);
     }
@@ -128,6 +129,7 @@ void bane_gather_full_ss_in_order(bane* bn, data* dt){
     MECALL(nodi->ssp, nodi->pcc , int);
     
     nodi->N = 0;
+    nodi->dtN = dt->N;
     for(j=0; j<dt->N; ++j){
       int p;
       int base = 1;
@@ -579,7 +581,8 @@ double bane_get_score_for_i(node* nodi, double ess){
     }
     scori -= lgamma(esp1 + nodi->ssp[pci]);
   }
-  return scori;
+
+  return scori * ((double)nodi->dtN / nodi->N);
 }
 
 double bane_get_score(bane* bn, double ess, double* scoreboard){
