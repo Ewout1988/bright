@@ -349,8 +349,8 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
     double acceptratio_b
       = (double)(n_eless)/(n_accepts + n_eless + n_rejects);
 
-    /* 
-       fprintf(stderr, "T = %g (%g, %g)\n", T, acceptratio_a, acceptratio_b);
+    /*
+    fprintf(stderr, "T = %g (%g, %g)\n", T, acceptratio_a, acceptratio_b);
     */
 
     if (acceptratio_a > max_a)
@@ -359,7 +359,7 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
       max_b = acceptratio_b;
 
     if (calibrating) {
-      if (acceptratio_a >= 0.6) {
+      if (acceptratio_a >= 0.60) {
 	// between 40 and 90: http://dx.doi.org/10.1016/S0045-7949(03)00214-1
 	calibrating = 0;
 	fprintf(stderr, "Learning\n");

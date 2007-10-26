@@ -474,9 +474,9 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 
     MECALL(strfilename, strlen(prefix) + 15, char);
     if (k == 0)
-      sprintf(buf, "%s.str", prefix);
+      sprintf(buf, "%s.strs", prefix);
     else
-      sprintf(buf, "%s_chain%d.str", prefix, k);
+      sprintf(buf, "%s_chain%d.strs", prefix, k);
     strcpy(strfilename, buf);
 
     MECALL(logfilename, strlen(prefix) + 15, char);

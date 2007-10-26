@@ -5,7 +5,7 @@ INCLUDE = -I$(SRCDIR)/common
 CFLAGS = $(INCLUDE)
 LIBS = -liberty
 
-BINARIES = bnlearner
+BINARIES = bnlearner bnmcmc arcweights
 FILES=common/bane common/bane_nb common/banesearch \
       common/data common/fdata common/forest \
       common/format common/nb_selector common/nbmodel \
