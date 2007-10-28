@@ -418,7 +418,6 @@ void bane_add_arc(bane* bn, arc* ar){
   ADD_CHILD(bn,from,to);
   ADD_PARENT(bn,to,from);
 
-  //propagate_path_add_down(bn, to, from->path_to_me_count, from->id);
   /*
   fprintf(stderr,"Added arc %d -> %d\n",from->id, to->id);
   node_write(bn,from,stderr);
@@ -473,31 +472,6 @@ void bane_del_arc_complete(bane *bn, arc *ar) {
     propagate_path_change_up(bn, from);
 }
 
-void propagate_path_del_down(bane* bn, node* me, int* subend,
-			     int old_parent_id){
-  int i;
-  int c = -1;
-  node* ch = NULL;
-
-  /* first update me */
-  -- me->path_to_me_count[old_parent_id];
-
-  me->ancestorcount = 0;
-  for(i=0; i<bn->nodecount; ++i){
-    me->path_to_me_count[i] -= subend[i];
-    me->ancestorcount += IS_ANCESTOR_OF(me,i);
-  }
-
-  /* and then propagate to children */
-
-  ch = FIRST_CHILD(bn, me, c);
-  while(c!=-1) {
-    propagate_path_del_down(bn, ch, subend, old_parent_id);
-    ch = NEXT_CHILD(bn, me, c);
-  }
-
-}
-  
 void bane_del_arc(bane* bn, arc* ar){
   node* from = bn->nodes + ar->from;
   node* to   = bn->nodes + ar->to;
@@ -505,7 +479,6 @@ void bane_del_arc(bane* bn, arc* ar){
   DEL_CHILD(bn,from,to);
   DEL_PARENT(bn,to,from);
 
-  //propagate_path_del_down(bn, to, from->path_to_me_count, from->id);
   /*
   fprintf(stderr,"Deleted arc %d -> %d\n",from->id, to->id);
   node_write(bn,from,stderr);
@@ -515,14 +488,12 @@ void bane_del_arc(bane* bn, arc* ar){
 void bane_rev_arc(bane* bn, arc* ar){
   int tmp;
   bane_del_arc(bn,ar);
-  //bane_del_arc_complete(bn,ar);
 
   tmp = ar->from;      /* save from   */
   ar->from = ar->to;   /* update from */  /* swap ar */
   ar->to = tmp;        /* update to   */
 
   bane_add_arc(bn,ar);
-  //bane_add_arc_complete(bn,ar);
 
   /*
   fprintf(stderr,"Reversed arc %d -> %d\n",from->id, to->id);
@@ -552,19 +523,6 @@ void bane_rev_arc_complete(bane *bn, arc *ar) {
 }
 
 extern double lgamma(double);
-
-
-/*
-double bane_get_score_for_i_if_del_x(node* nodi, double ess, node* nodx){
-  # save old ss and ssp and pcc
-  # update pcc
-  # create and calculate new ss and ssp from old ones
-  # scori = bane_get_score_for_i
-  # restore old ss and ssp and pcc
-  # free new ss and ssp
-  # return scori
-}
-*/
 
 double bane_get_score_for_i(node* nodi, double ess){
   int pci;
