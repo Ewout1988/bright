@@ -129,6 +129,10 @@ public class Network {
         this(template.variables);
     }
 
+    public String toString() {
+        return "Imported network";
+    }    
+
     public void computeWeights(Project project) throws ApplicationException {
         String idtFile = project.getIdtFile();
         String vdFile = project.getVdFile();
@@ -248,7 +252,7 @@ public class Network {
             try {
                 weight = Double.parseDouble(l[2]);
             } catch (NumberFormatException e) {
-                if (l[2] == "inf")
+                if (l[2].equals("inf"))
                     weight = Double.POSITIVE_INFINITY;
                 else
                     System.err.println("Strange weight: " + l[2]);
@@ -338,7 +342,7 @@ public class Network {
                 }
                 if (v.supports != null) {
                     o.print(" [color=\"" + dotSupportColor(v.supports.get(i))
-                            + "\" label=\"" + (int)(100*v.supports.get(i) + 0.5) + "\"]");
+                            + "\" label=\"" + String.format("%.2f", v.supports.get(i)) + "\"]");
                 }
                 o.println(";");
             }
@@ -349,7 +353,11 @@ public class Network {
     
     public void writeDot(String dotFile, Project project) throws FileNotFoundException, ApplicationException
     {
-        //FIXME
+        computeWeights(project);
+        PrintStream f = new PrintStream(dotFile);
+        writeDot(f, "weights", true);
+        f.flush();
+        f.close();
     }
 
     private static String dotSupportColor(double support) {

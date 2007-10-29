@@ -132,7 +132,6 @@ public class Settings {
        try {
             File jarFile = new File(Settings.class.getProtectionDomain()
                     .getCodeSource().getLocation().toURI());
-            System.err.println(jarFile.getAbsolutePath());
 
             File dir;
             

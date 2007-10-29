@@ -31,8 +31,6 @@ public class LearnerDialog extends JDialog implements ProgressListener {
     private static final long serialVersionUID = -4618759882137585409L;
 
     private JFormattedTextField iterationsField;
-    private JFormattedTextField coolingsField;
-    private JFormattedTextField essField;
     private JFormattedTextField parameterCostField;
     private JButton runButton;
     private JButton cancelButton;
@@ -69,18 +67,6 @@ public class LearnerDialog extends JDialog implements ProgressListener {
         iterationsField.setColumns(10);
         iterationsLabel.setLabelFor(iterationsField);
         
-        JLabel coolingsLabel = new JLabel("Coolings: ");        
-        coolingsField = new JFormattedTextField();
-        coolingsField.setValue(new Integer(project.getLearnerDefaults().getCoolings()));
-        coolingsField.setColumns(2);
-        coolingsLabel.setLabelFor(coolingsField);
-
-        JLabel essLabel = new JLabel("ESS: ");        
-        essField = new JFormattedTextField();
-        essField.setValue(new Double(project.getLearnerDefaults().getEss()));
-        essField.setColumns(5);
-        essLabel.setLabelFor(essField);
-
         JLabel parameterCostLabel = new JLabel("Extra parameter cost: ");        
         parameterCostField = new JFormattedTextField();
         parameterCostField.setValue(new Double(project.getLearnerDefaults().getParameterCost()));
@@ -90,15 +76,11 @@ public class LearnerDialog extends JDialog implements ProgressListener {
         JPanel labelPane = new JPanel();
         labelPane.setLayout(new GridLayout(0, 1));
         labelPane.add(iterationsLabel);
-        labelPane.add(coolingsLabel);
-        labelPane.add(essLabel);
         labelPane.add(parameterCostLabel);
         
         JPanel fieldPane = new JPanel();
         fieldPane.setLayout(new GridLayout(0, 1));
         fieldPane.add(iterationsField);
-        fieldPane.add(coolingsField);
-        fieldPane.add(essField);
         fieldPane.add(parameterCostField);
 
         JPanel settingsPane = new JPanel();
@@ -128,8 +110,8 @@ public class LearnerDialog extends JDialog implements ProgressListener {
                         "Learned Network");
                 
                 if (description != null) {
-                    project.getLearnerDefaults().setCoolings(interpretIntValue(coolingsField.getValue()));
-                    project.getLearnerDefaults().setEss(interpretDoubleValue(essField.getValue()));
+                    project.getLearnerDefaults().setCoolings(1 /*interpretIntValue(coolingsField.getValue())*/);
+                    project.getLearnerDefaults().setEss(1 /*interpretDoubleValue(essField.getValue())*/);
                     project.getLearnerDefaults().setParameterCost(interpretDoubleValue(parameterCostField.getValue()));
                     project.getLearnerDefaults().setIterations(interpretIntValue(iterationsField.getValue()));
                     

@@ -14,6 +14,9 @@ import java.awt.GridLayout;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.geom.AffineTransform;
+import java.awt.geom.Dimension2D;
+import java.awt.geom.NoninvertibleTransformException;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -24,6 +27,7 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 import javax.swing.Action;
 import javax.swing.BorderFactory;
@@ -45,6 +49,8 @@ import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JSeparator;
+import javax.swing.JToolBar;
 import javax.swing.ListSelectionModel;
 import javax.swing.UIManager;
 import javax.swing.event.ChangeEvent;
@@ -53,12 +59,20 @@ import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.filechooser.FileFilter;
 
+import org.apache.batik.bridge.ViewBox;
+import org.apache.batik.gvt.CanvasGraphicsNode;
+import org.apache.batik.gvt.CompositeGraphicsNode;
+import org.apache.batik.gvt.GraphicsNode;
 import org.apache.batik.swing.JSVGCanvas;
 import org.apache.batik.swing.JSVGScrollPane;
+import org.apache.batik.swing.svg.GVTTreeBuilderAdapter;
 import org.apache.batik.swing.svg.GVTTreeBuilderEvent;
-import org.apache.batik.swing.svg.GVTTreeBuilderListener;
+import org.apache.batik.swing.svg.SVGDocumentLoaderAdapter;
 import org.apache.batik.swing.svg.SVGDocumentLoaderEvent;
-import org.apache.batik.swing.svg.SVGDocumentLoaderListener;
+import org.apache.batik.util.SVGConstants;
+import org.apache.batik.util.gui.resource.JToolbarButton;
+import org.w3c.dom.svg.SVGDocument;
+import org.w3c.dom.svg.SVGSVGElement;
 
 public class Bright extends JPanel {
     private static final long serialVersionUID = 2973533647984331299L;
@@ -73,15 +87,25 @@ public class Bright extends JPanel {
             return "Bright project (bright.xml) files";
         } };
 
-    private static final FileFilter strsFileFilter = new FileFilter() {
+    private static final FileFilter strFileFilter = new FileFilter() {
             public boolean accept(File f) {
-                return f.getName().endsWith("strs")
-                    || f.getName().endsWith("STRS")
+                return f.getName().endsWith("str")
+                    || f.getName().endsWith("STR")
                     || f.isDirectory();
             }
             public String getDescription() {
-                return "Bright MCMC newtork structure files (.strs)";
+                return "B-Right raw structure files (.str)";
             } };
+
+            private static final FileFilter strsFileFilter = new FileFilter() {
+                public boolean accept(File f) {
+                    return f.getName().endsWith("strs")
+                        || f.getName().endsWith("STRS")
+                        || f.isDirectory();
+                }
+                public String getDescription() {
+                    return "Bright MCMC newtork structure files (.strs)";
+                } };
 
     private static final String ABOUT_MESSAGE = "B-Right 0.1 (c) 2007 Koen Deforche, Tomi Silander\n"
           + "\n"
@@ -103,6 +127,8 @@ public class Bright extends JPanel {
     private JLabel status;
 
     private JLabel networkDetails;
+
+    protected boolean networkChanged;
 
     public Bright(JFrame frame) {
         project = null;
@@ -215,7 +241,7 @@ public class Bright extends JPanel {
         menu = new JMenu("Network");
         menuBar.add(menu);
 
-        haveDataItems.add(menuItem = new JMenuItem("Learn best..."));
+        haveDataItems.add(menuItem = new JMenuItem("Learn from data"));
         menu.add(menuItem);
         menuItem.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent ae) {
@@ -224,7 +250,40 @@ public class Bright extends JPanel {
             }
         });
 
-        haveNetworkItems.add(menuItem = new JMenuItem("Inference..."));
+        menu.addSeparator();
+        
+        haveDataItems.add(menuItem = new JMenuItem("Import..."));
+        menu.add(menuItem);
+        menuItem.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                fc.setFileSelectionMode(JFileChooser.FILES_ONLY);
+                fc.setFileFilter(strFileFilter);
+
+                int returnVal = fc.showOpenDialog(Bright.this);
+                if (returnVal == JFileChooser.APPROVE_OPTION) {
+                    File strFile = fc.getSelectedFile();
+                    try {
+                        Network n = new Network(strFile, new File(project.getVdFile()));
+                        addNetwork(n);
+                    } catch (IOException e1) {
+                        e1.printStackTrace();
+                        JOptionPane.showMessageDialog(Bright.this,
+                                "I/O error reading file: '" + strFile.getAbsolutePath() + "': "+ e1.getMessage(),
+                                "Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                }                
+            }
+        });
+
+        haveNetworkItems.add(menuItem = new JMenuItem("Export..."));
+        menu.add(menuItem);
+        menuItem.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                
+            }
+        });
+
+        haveNetworkItems.add(menuItem = new JMenuItem("Inference Playground"));
         menu.add(menuItem);
         menuItem.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
@@ -240,7 +299,7 @@ public class Bright extends JPanel {
         menu = new JMenu("MCMC");
         menuBar.add(menu);
 
-        haveDataItems.add(menuItem = new JMenuItem("Sample..."));
+        haveDataItems.add(menuItem = new JMenuItem("Start MCMC run..."));
         menu.add(menuItem);
         menuItem.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent ae) {
@@ -513,41 +572,88 @@ public class Bright extends JPanel {
 
         svgNetwork = new JSVGCanvas();
         svgNetwork.setPreferredSize(new Dimension(500, 500));
-        svgNetwork.addSVGDocumentLoaderListener(new SVGDocumentLoaderListener() {
+        svgNetwork.setDoubleBufferedRendering(true);
+
+        svgNetwork.addSVGDocumentLoaderListener(new SVGDocumentLoaderAdapter() {
             public void documentLoadingStarted(SVGDocumentLoaderEvent arg0) {
                 status.setText("Network loading...");
+                networkChanged = true;
             }
             public void documentLoadingCompleted(SVGDocumentLoaderEvent arg0) {
                 status.setText("Network loaded.");
             }
-            public void documentLoadingCancelled(SVGDocumentLoaderEvent arg0) { }
-            public void documentLoadingFailed(SVGDocumentLoaderEvent arg0) { }        
         });
-        svgNetwork.addGVTTreeBuilderListener(new GVTTreeBuilderListener() {
-            public void gvtBuildCancelled(GVTTreeBuilderEvent arg0) { }
+        svgNetwork.addGVTTreeBuilderListener(new GVTTreeBuilderAdapter() {
             public void gvtBuildCompleted(GVTTreeBuilderEvent arg0) {
+                if (networkChanged) {
+                    networkChanged = false;
+
+                    SVGDocument svgDocument = svgNetwork.getSVGDocument();
+                    if (svgDocument != null) {
+                        SVGSVGElement elt = svgDocument.getRootElement();
+                        Dimension dim = svgNetwork.getSize();
+
+                        String viewBox = elt.getAttributeNS
+                            (null, SVGConstants.SVG_VIEW_BOX_ATTRIBUTE);
+
+                        AffineTransform Tx;
+                        if (viewBox.length() != 0) {
+                            String aspectRatio = elt.getAttributeNS
+                                (null, SVGConstants.SVG_PRESERVE_ASPECT_RATIO_ATTRIBUTE);
+                            Tx = ViewBox.getPreserveAspectRatioTransform
+                                (elt, viewBox, aspectRatio, dim.width, dim.height, null);
+                        } else {
+                            // no viewBox has been specified, create a scale transform
+                            Dimension2D docSize = svgNetwork.getSVGDocumentSize();
+                            double sx = dim.width / docSize.getWidth();
+                            double sy = dim.height / docSize.getHeight();
+                            double s = Math.min(sx, sy);
+                            Tx = AffineTransform.getScaleInstance(s, s);
+                        }
+
+                        GraphicsNode gn = svgNetwork.getGraphicsNode();
+                        CanvasGraphicsNode cgn = getCanvasGraphicsNode(gn);
+                        if (cgn != null) {
+                            AffineTransform vTx = cgn.getViewingTransform();
+                            if ((vTx != null) && !vTx.isIdentity()) {
+                                try {
+                                    AffineTransform invVTx = vTx.createInverse();
+                                    Tx.concatenate(invVTx);
+                                } catch (NoninvertibleTransformException nite) {
+                                    /* nothing */
+                                }
+                            }
+                        }
+
+                        svgNetwork.setRenderingTransform(Tx);
+                    }           
+                }
                 status.setText("");
-                /*
-                 * TODO: figure out how to scale to see the whole image
-                 * AffineTransform at = new AffineTransform();
-                 * at.scale(0.1, 0.1);
-                 * at.concatenate(svgNetwork.getRenderingTransform());
-                 * svgNetwork.setRenderingTransform(at);
-                 */
             }
-            public void gvtBuildFailed(GVTTreeBuilderEvent arg0) { }
             public void gvtBuildStarted(GVTTreeBuilderEvent arg0) {
                 status.setText("Rendering...");
             } });
 
         JSVGScrollPane scroller = new JSVGScrollPane(svgNetwork);
 
-        Action zoomOutAction = svgNetwork.new ZoomAction(0.5);
-        JButton button = new JButton(zoomOutAction);
-        button.setText("Zoom out");
+        final JToolBar toolBar = new JToolBar();
+        toolBar.setFloatable(false);
+
+        Action a = svgNetwork.new ZoomAction(0.5);
+        JToolbarButton b = new JToolbarButton();
+        b.setAction(a);
+        b.setIcon(createImageIcon("images/zoom-out.png"));
+        toolBar.add(b);
+
+        a = svgNetwork.new ZoomAction(2);
+        b = new JToolbarButton();
+        b.setAction(a);
+        b.setIcon(createImageIcon("images/zoom-in.png"));
+        toolBar.add(b);
 
         JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        p.add(button);
+        p.add(toolBar);
+        p.add(new JSeparator());
         p.add(status);
 
         JPanel pcenter = new JPanel(new BorderLayout());
@@ -558,6 +664,20 @@ public class Bright extends JPanel {
 
         return panel;
     }
+
+    protected CanvasGraphicsNode getCanvasGraphicsNode(GraphicsNode gn) {
+        if (!(gn instanceof CompositeGraphicsNode))
+            return null;
+        CompositeGraphicsNode cgn = (CompositeGraphicsNode)gn;
+        List children = cgn.getChildren();
+        if (children.size() == 0)
+            return null;
+        gn = (GraphicsNode)cgn.getChildren().get(0);
+        if (!(gn instanceof CanvasGraphicsNode))
+            return null;
+        return (CanvasGraphicsNode)gn;
+    }
+
     
     private void setProject(Project p) {
         this.project = p;
