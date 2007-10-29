@@ -12,7 +12,7 @@
 	    <include name="*.jar"/>
 	  </fileset>
 	</path>
-	
+
 	<target name="clean">
 	  <delete dir="${build}" />
 	  <delete dir="${dist}" />
@@ -21,6 +21,9 @@
 	<target name="init">
 	  <mkdir dir="${build}" />
 	  <mkdir dir="${dist}" />
+	  <mkdir dir="${dist}/lib" />
+	  <mkdir dir="${dist}/bin" />
+	  <mkdir dir="${dist}/Graphviz" />
 	</target>
 	
 	<target name="compile" depends="init">
@@ -28,14 +31,26 @@
 	    <classpath refid="project.classpath" />
 	  </javac>
 	</target>
-	
-	<manifestclasspath property="jar.classpath"
-			   jarfile="${dist}/${proj.name}-${proj.version}.jar">
-	  <classpath refid="project.classpath" />
-	</manifestclasspath>
 
 	<target name="dist" depends="compile">
-	  <jar jarfile="${dist}/${proj.name}-${proj.version}.jar" basedir="${build}">
+
+	  <copy todir="dist/lib" flatten="true">
+	    <fileset dir="lib">
+	      <include name="*.jar"/>
+	  </fileset>
+	  </copy>
+
+	  <manifestclasspath property="jar.classpath"
+			     jarfile="${dist}/${proj.name}-${proj.version}.jar">
+	    <classpath>
+	      <fileset dir="dist/lib">
+		<include name="*.jar"/>
+	      </fileset>
+	    </classpath>
+	  </manifestclasspath>
+
+	  <jar jarfile="${dist}/${proj.name}-${proj.version}.jar"
+	       basedir="${build}">
 	    <manifest>
 	      <attribute name="Main-Class" value="bright.gui.Bright" />
 	      <attribute name="Class-Path" value="${jar.classpath}" />
