@@ -825,7 +825,7 @@ public class Bright extends JPanel {
     /** Returns an ImageIcon, or null if the path was invalid. */
     private static ImageIcon createImageIcon(String path) {
         path = "images" + File.separator + path;
-        java.net.URL imgURL = Bright.class.getResource(path);
+        java.net.URL imgURL = Bright.class.getResource("/" + path);
         if (imgURL != null) {
             return new ImageIcon(imgURL);
         } else {
