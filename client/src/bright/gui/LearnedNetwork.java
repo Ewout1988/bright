@@ -162,7 +162,7 @@ public class LearnedNetwork extends Network {
     public String detailsHtml() {
         return "<html><table>"
             + "<tr><td><b>Created by:</b></td><td>Simulated annealing</td></tr>"
-            + "<tr><td><b>Date:</b></td><td>" + properties.getComputed() + "</td></tr>"
+/*            + "<tr><td><b>Date:</b></td><td>" + properties.getComputed() + "</td></tr>" */
             + "<tr><td><b>ESS:</b></td><td>" + getEss() + "</td></tr>"
             + "<tr><td><b>Extra parameter cost:</b></td><td>" + properties.getLearnerProperties().getParameterCost() + "</td></tr>"
             + "<tr><td><b>Iterations:</b></td><td>" + properties.getLearnerProperties().getIterations() + "</td></tr>"

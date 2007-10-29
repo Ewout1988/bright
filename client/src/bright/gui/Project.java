@@ -59,6 +59,14 @@ public class Project {
                 Element ne = (Element) neo;
                 networks.add(new LearnedNetwork(ne, getVdFile()));
             }
+            for (Object neo:networksE.getChildren("ConsensusNetwork")) {
+                Element ne = (Element) neo;
+                networks.add(new ConsensusNetwork(ne, getVdFile()));
+            }
+            for (Object neo:networksE.getChildren("Network")) {
+                Element ne = (Element) neo;
+                networks.add(new Network(ne, getVdFile()));
+            }
          } catch (JDOMException e) {
             throw new ApplicationException(e.getMessage());
         }        

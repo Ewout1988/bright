@@ -6,8 +6,13 @@
  */
 package bright.gui;
 
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintStream;
+
+import org.jdom.Element;
 
 public class ConsensusNetwork extends Network {
     public static class Properties {
@@ -42,6 +47,9 @@ public class ConsensusNetwork extends Network {
             this.directed = directed;
             this.ignoredArcDirection = ignoredArcDirection;
             this.minimumSupport = minimumSupport;
+        }
+        
+        public Properties() {           
         }
 
         public boolean ignoredArcDirection() {
@@ -109,4 +117,41 @@ public class ConsensusNetwork extends Network {
             + "</table></html>";
     }
 
+    public ConsensusNetwork(Element xml, String vdFile) throws FileNotFoundException, IOException, ApplicationException { 
+        this(xml, vdFile == null ? null : new FileInputStream(vdFile));
+    }
+
+    public ConsensusNetwork(Element xml, InputStream vdFile) throws ApplicationException {
+        super(xml, vdFile);
+
+        Element propertiesE = xml.getChild("Properties");
+
+        if (propertiesE != null) {
+            properties = new Properties();
+
+            try {
+                properties.setDescription(propertiesE.getChildTextTrim("Description"));
+                properties.setDirected(Boolean.parseBoolean(propertiesE.getChildTextTrim("Directed")));
+                properties.setIgnoredArcDirection(Boolean.parseBoolean(propertiesE.getChildTextTrim("IgnoreArcs")));
+                properties.setMinimumSupport(Double.parseDouble(propertiesE.getChildTextTrim("MinimumSupport")));
+            } catch (NumberFormatException e1) {
+                System.err.println("Parse exception: " + e1.getMessage());
+            }
+        }
+    }
+
+    public Element saveToXML() {
+        Element e;
+
+        Element result = super.saveToXML();
+        result.setName("LearnedNetwork");
+        
+        Element propertiesE = new Element("Properties"); result.addContent(propertiesE);
+        e = new Element("Description"); e.setText(properties.description); propertiesE.addContent(e);        
+        e = new Element("Directed"); e.setText(Boolean.toString(properties.isDirected())); propertiesE.addContent(e);
+        e = new Element("IgnoreArcs"); e.setText(Boolean.toString(properties.ignoredArcDirection())); propertiesE.addContent(e);
+        e = new Element("MinimumSupport"); e.setText(Double.toString(properties.getMinimumSupport())); propertiesE.addContent(e);
+
+        return result;
+    }
 }
