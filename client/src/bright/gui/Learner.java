@@ -116,7 +116,6 @@ public class Learner {
         /*
          * Run bnlearner
          */
-        Runtime runtime = Runtime.getRuntime();
         learner = null;
         File projectDir = new File(project.getProjectDir());
         Properties properties = project.getLearnerDefaults();
@@ -130,10 +129,22 @@ public class Learner {
                     String.valueOf(properties.getCoolings()), String.valueOf(properties.getParameterCost())};
 
 
-            learner = runtime.exec(cmds, null, projectDir);
+            ProcessBuilder pb = new ProcessBuilder(cmds);
+            pb.directory(projectDir);
+            Thread progressThread = new Thread(new Runnable() {
 
-            InputStream input = learner.getErrorStream();
-            doLogWindow(input);
+                public void run() {
+                    InputStream input = learner.getErrorStream();
+                    try {
+                        doLogWindow(input);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            });
+
+            learner = pb.start();
+            progressThread.run();
             int result = learner.waitFor();
 
             if (result != 0) {

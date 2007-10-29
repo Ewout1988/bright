@@ -93,7 +93,7 @@ public class IApplet extends Applet {
        Answun answun = new Answun(ifr, dr, sr);
     
        // read bird.gif
-       Image bird = Toolkit.getDefaultToolkit().getImage("images/bird.gif");
+       Image bird = Toolkit.getDefaultToolkit().getImage("images" + File.separator + "bird.gif");
     
        IApplet app = new IApplet();
        app.setup(dg, vg, ifr, bird, answun);

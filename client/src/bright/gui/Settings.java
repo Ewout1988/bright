@@ -40,10 +40,10 @@ public class Settings {
     }
 
     private Settings(File home) {
-        learnerDir = "bin/";
-        dotPath = "bin/dot";
+        learnerDir = "bin" + File.separator;
+        dotPath = "Graphviz" + File.separator + "bin " + File.separator + "dot";
         perlPath = "";
-        
+
         wtsProxyHost = "";
         wtsProxyPort = "";
         wtsPrepObbServiceName = "bright-prepobb";
