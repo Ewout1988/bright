@@ -41,7 +41,7 @@ public class Settings {
 
     private Settings(File home) {
         learnerDir = "bin" + File.separator;
-        dotPath = "Graphviz" + File.separator + "bin " + File.separator + "dot";
+        dotPath = "Graphviz" + File.separator + "bin" + File.separator + "dot";
         perlPath = "";
 
         wtsProxyHost = "";
