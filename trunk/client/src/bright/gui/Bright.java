@@ -213,7 +213,7 @@ public class Bright extends JPanel {
             }
         });
 
-        haveProjectItems.add(menuItem = new JMenuItem("Save project...", createImageIcon("images/Save16.gif")));
+        haveProjectItems.add(menuItem = new JMenuItem("Save project...", createImageIcon("Save16.gif")));
         menu.add(menuItem);
         menuItem.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent ae) {
@@ -223,7 +223,7 @@ public class Bright extends JPanel {
 
         menu.addSeparator();
 
-        haveProjectItems.add(menuItem = new JMenuItem("Import data...", createImageIcon("images/Open16.gif")));
+        haveProjectItems.add(menuItem = new JMenuItem("Import data...", createImageIcon("Open16.gif")));
         menu.add(menuItem);
         menuItem.addActionListener(openDataFile());
         
@@ -642,13 +642,13 @@ public class Bright extends JPanel {
         Action a = svgNetwork.new ZoomAction(0.5);
         JToolbarButton b = new JToolbarButton();
         b.setAction(a);
-        b.setIcon(createImageIcon("images/zoom-out.png"));
+        b.setIcon(createImageIcon("zoom-out.png"));
         toolBar.add(b);
 
         a = svgNetwork.new ZoomAction(2);
         b = new JToolbarButton();
         b.setAction(a);
-        b.setIcon(createImageIcon("images/zoom-in.png"));
+        b.setIcon(createImageIcon("zoom-in.png"));
         toolBar.add(b);
 
         JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -824,6 +824,7 @@ public class Bright extends JPanel {
 
     /** Returns an ImageIcon, or null if the path was invalid. */
     private static ImageIcon createImageIcon(String path) {
+        path = "images" + File.separator + path;
         java.net.URL imgURL = Bright.class.getResource(path);
         if (imgURL != null) {
             return new ImageIcon(imgURL);
