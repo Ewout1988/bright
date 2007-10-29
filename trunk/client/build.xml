@@ -22,6 +22,7 @@
 	  <mkdir dir="${build}" />
 	  <mkdir dir="${dist}" />
 	  <mkdir dir="${dist}/lib" />
+	  <mkdir dir="${build}/images" />
 	  <mkdir dir="${dist}/bin" />
 	  <mkdir dir="${dist}/Graphviz" />
 	</target>
@@ -37,7 +38,14 @@
 	  <copy todir="dist/lib" flatten="true">
 	    <fileset dir="lib">
 	      <include name="*.jar"/>
-	  </fileset>
+	    </fileset>
+	  </copy>
+
+	  <copy todir="build/images" flatten="true">
+	    <fileset dir="images">
+	      <include name="*.png"/>
+	      <include name="*.gif"/>
+	    </fileset>
 	  </copy>
 
 	  <manifestclasspath property="jar.classpath"
