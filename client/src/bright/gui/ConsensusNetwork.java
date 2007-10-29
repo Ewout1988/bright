@@ -144,7 +144,7 @@ public class ConsensusNetwork extends Network {
         Element e;
 
         Element result = super.saveToXML();
-        result.setName("LearnedNetwork");
+        result.setName("ConsensusNetwork");
         
         Element propertiesE = new Element("Properties"); result.addContent(propertiesE);
         e = new Element("Description"); e.setText(properties.description); propertiesE.addContent(e);        
