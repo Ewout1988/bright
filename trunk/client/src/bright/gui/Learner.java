@@ -10,7 +10,6 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.InterruptedIOException;
 
@@ -122,29 +121,38 @@ public class Learner {
         
         try {
             File reportFile = File.createTempFile("bnlearn", ".stat", projectDir);
+            File progressFile = File.createTempFile("bnlearn", ".txt", projectDir);
 
             String cmds[] = { Settings.getSettings().getLearnerDir() + "bnlearner", project.getVdFile(), project.getIdtFile(),
                     String.valueOf(project.getNumInstances()), String.valueOf(properties.getEss()),
                     reportFile.getAbsolutePath(), structFile.getAbsolutePath(), String.valueOf(properties.getIterations()),
-                    String.valueOf(properties.getCoolings()), String.valueOf(properties.getParameterCost())};
+                    String.valueOf(properties.getCoolings()), String.valueOf(properties.getParameterCost()),
+                    progressFile.getAbsolutePath()};
 
 
             ProcessBuilder pb = new ProcessBuilder(cmds);
             pb.directory(projectDir);
-            Thread progressThread = new Thread(new Runnable() {
-
-                public void run() {
-                    InputStream input = learner.getErrorStream();
-                    try {
-                        doLogWindow(input);
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
-            });
 
             learner = pb.start();
-            progressThread.run();
+            
+            LogFileTailer tailer = new LogFileTailer(progressFile);
+            tailer.addLogFileTailerListener(new LogFileTailerListener() {
+                private String message = "Starting";
+
+                public void newLogFileLine(String line) {                    
+                    try {
+                        double d = Double.valueOf(line);
+                        if (progress != null)
+                            progress.updateProgress(message, 100 * d);
+                        else
+                            System.err.println((d * 100) + "%");
+                    } catch (NumberFormatException e) {
+                        message = line;
+                        progress.updateProgress(message, 0);                    
+                    }
+                } });
+            tailer.start();
+            
             int result = learner.waitFor();
 
             if (result != 0) {
@@ -156,6 +164,7 @@ public class Learner {
             String[] parts = s.split(" ");
 
             reportFile.delete();
+            progressFile.delete();
             
             return new Result(Double.valueOf(parts[4]), Long.valueOf(parts[0]));
         } catch (InterruptedIOException e) {
@@ -174,27 +183,4 @@ public class Learner {
     public void stop() {
         learner.destroy();        
     }
-
-    private void doLogWindow(InputStream input) throws IOException {
-        BufferedReader in
-            = new BufferedReader(new InputStreamReader(input));
-        String message = "Starting";
-        String s = null;
-        do {
-            s = in.readLine();
-            if (s != null) {
-                try {
-                    double d = Double.valueOf(s);
-                    if (progress != null)
-                        progress.updateProgress(message, 100 * d);
-                    else
-                        System.err.println((d * 100) + "%");
-                } catch (NumberFormatException e) {
-                    message = s;
-                    progress.updateProgress(message, 0);                    
-                }
-            }
-        } while (s != null);
-    }
-
 }

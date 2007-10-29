@@ -59,7 +59,7 @@ public class Network {
 		}
 
 		public boolean addParent(int i) {
-			if (! parents.contains(i)) {
+			if (!parents.contains(i)) {
 				parents.add(i);
 				return true;
 			} else
@@ -76,10 +76,13 @@ public class Network {
                 for (int i = 0; i < parents.size(); ++i)
                     weights.add(0.);
             }
-            
+
             for (int i = 0; i < parents.size(); ++i)
                 if (parents.get(i) == from) {
-                    weights.set(i, weight);
+                    if (weights.size() == i)
+                        weights.add(weight);
+                    else
+                        weights.set(i, weight);
                     return;
                 }
 
@@ -415,12 +418,14 @@ public class Network {
                     wtsClient.download(sessionTicket, serviceName, "qjt", qjtFile);
                     wtsClient.download(sessionTicket, serviceName, "dpa", dpaFile);
 
+                    System.err.println(plaFile.getAbsolutePath() + "\n" + qjtFile.getAbsolutePath() + "\n" + dpaFile.getAbsolutePath());
+                    
                     IApplet.run(vdFile, strFile, plaFile, qjtFile, dpaFile);
 
-                    strFile.delete();
-                    plaFile.delete();
-                    qjtFile.delete();
-                    dpaFile.delete();
+                    //strFile.delete();
+                    //plaFile.delete();
+                    //qjtFile.delete();
+                    //dpaFile.delete();
 
                     break;
                 }
@@ -544,8 +549,31 @@ public class Network {
             String parent = arcE.getChildTextTrim("Parent");
             String child = arcE.getChildTextTrim("Child");
             
-            variables.get(variableIndexOf(child)).addParent(variableIndexOf(parent));
+            Double weight = null;
+            Double support = null;
+            
+            if (arcE.getChild("Weight") != null)
+                weight = Double.valueOf(arcE.getChildTextTrim("Weight"));
+            if (arcE.getChild("Support") != null)
+                support = Double.valueOf(arcE.getChildTextTrim("Support"));
+            
+            addArc(parent, child, weight, support);
         }
+    }
+
+    /**
+     * @param parent
+     * @param child
+     * @throws ApplicationException
+     */
+    private void addArc(String parent, String child, Double weight, Double support) throws ApplicationException {
+        Variable childVar = variables.get(variableIndexOf(child));
+
+        childVar.addParent(variableIndexOf(parent));
+        if (weight != null)
+            childVar.setWeight(variableIndexOf(parent), weight);
+        if (support != null)
+            childVar.setSupport(variableIndexOf(parent), support);
     }
 
     private int variableIndexOf(String name) throws ApplicationException {
@@ -585,6 +613,9 @@ public class Network {
                 e = new Element("Child"); e.setText(v.name); arcE.addContent(e);
                 if (v.weights != null) {
                     e = new Element("Weight"); e.setText(Double.toString(v.weights.get(k))); arcE.addContent(e);
+                }
+                if (v.supports != null) {
+                    e = new Element("Support"); e.setText(Double.toString(v.supports.get(k))); arcE.addContent(e);
                 }
             }
         }
