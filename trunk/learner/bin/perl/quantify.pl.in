@@ -50,7 +50,8 @@ my ($strfile, $thfile, $jtrfile, $clqfile, $qjtfile) = @ARGV;
 
 open(G,"<$strfile") or die "iik $strfile $!\n";
 $nodecount = <G>;
-chomp $nodecount;
+# chomp $nodecount; (only removes unix newlines, not windows)
+$nodecount =~ s/[\012\015]+$//;
 for($i=0; $i<$nodecount; ++$i){
     ($childcount[$i], $parentcount[$i], @rest) = split(/\s+/, <G>);
     $parent[$i] = ($parentcount[$i]) ? [@rest] : [];

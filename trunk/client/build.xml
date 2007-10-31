@@ -6,7 +6,7 @@
 	<property name="dist" location="dist" />
 	<property name="proj.name" value="bright" />
 	<property name="proj.version" value="0.1" />
-	
+
 	<path id="project.classpath">
 	  <fileset dir="lib">
 	    <include name="*.jar"/>
