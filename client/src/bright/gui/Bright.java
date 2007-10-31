@@ -85,27 +85,30 @@ public class Bright extends JPanel {
         }
         public String getDescription() {
             return "Bright project (bright.xml) files";
-        } };
+        }
+    };
 
     private static final FileFilter strFileFilter = new FileFilter() {
-            public boolean accept(File f) {
-                return f.getName().endsWith("str")
-                    || f.getName().endsWith("STR")
-                    || f.isDirectory();
-            }
-            public String getDescription() {
-                return "B-Right raw structure files (.str)";
-            } };
+        public boolean accept(File f) {
+            return f.getName().endsWith("str")
+                || f.getName().endsWith("STR")
+                || f.isDirectory();
+        }
+        public String getDescription() {
+            return "B-Right raw structure files (.str)";
+        } 
+    };
 
-            private static final FileFilter strsFileFilter = new FileFilter() {
-                public boolean accept(File f) {
-                    return f.getName().endsWith("strs")
-                        || f.getName().endsWith("STRS")
-                        || f.isDirectory();
-                }
-                public String getDescription() {
-                    return "Bright MCMC newtork structure files (.strs)";
-                } };
+    private static final FileFilter strsFileFilter = new FileFilter() {
+        public boolean accept(File f) {
+            return f.getName().endsWith("strs")
+                || f.getName().endsWith("STRS")
+                || f.isDirectory();
+        }
+        public String getDescription() {
+            return "Bright MCMC newtork structure files (.strs)";
+        } 
+    };
 
     private static final String ABOUT_MESSAGE = "B-Right 0.1 (c) 2007 Koen Deforche, Tomi Silander\n"
           + "\n"
@@ -826,7 +829,6 @@ public class Bright extends JPanel {
     private static ImageIcon createImageIcon(String path) {
         path = "images/" + path;
         java.net.URL imgURL = Bright.class.getResource("/" + path);
-        System.err.println(imgURL);
         if (imgURL != null) {
             return new ImageIcon(imgURL);
         } else {

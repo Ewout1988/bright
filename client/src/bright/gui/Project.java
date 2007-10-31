@@ -19,6 +19,8 @@ import org.jdom.output.XMLOutputter;
  * @author kdf
  */
 public class Project {
+    private static final String VERSION = "0.1";
+    
     private String projectDir;
     private int numInstances;
     private Learner.Properties learnerDefaults;
@@ -45,6 +47,7 @@ public class Project {
         try {
             Document document = builder.build(fileName);
             Element root = document.getRootElement();
+            
             projectDir = root.getChild("ProjectDir").getTextTrim();
 
             if (projectDir.length() == 0)
@@ -76,6 +79,9 @@ public class Project {
         Element root = new Element("BrightProject");
 
         Element e;
+
+        e = new Element("Version"); e.setText(VERSION); root.addContent(e);
+        
         e = new Element("ProjectDir");
         if (fileName.getParentFile().equals(new File(projectDir)))
             e.setText("");
