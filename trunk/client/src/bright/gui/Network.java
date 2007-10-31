@@ -368,12 +368,12 @@ public class Network {
             return "0.51,0.69,0.92";
     }
 
-    public void startInferencePlayground(Project project) throws ApplicationException {
+    public void startInferencePlayground(Project project) throws ApplicationException {        
         WtsClient wtsClient = new WtsClient(Settings.getSettings().getWtsUrl());
         String serviceName = Settings.getSettings().getWtsPrepObbServiceName();
         File strFile = null;
         File optionsFile = null;
-        
+
         try {
             strFile = File.createTempFile("bright", ".str");
             save(strFile);
@@ -408,14 +408,12 @@ public class Network {
                     wtsClient.download(sessionTicket, serviceName, "qjt", qjtFile);
                     wtsClient.download(sessionTicket, serviceName, "dpa", dpaFile);
 
-                    System.err.println(plaFile.getAbsolutePath() + "\n" + qjtFile.getAbsolutePath() + "\n" + dpaFile.getAbsolutePath());
-                    
                     IApplet.run(vdFile, strFile, plaFile, qjtFile, dpaFile);
 
-                    //strFile.delete();
-                    //plaFile.delete();
-                    //qjtFile.delete();
-                    //dpaFile.delete();
+                    strFile.delete();
+                    plaFile.delete();
+                    qjtFile.delete();
+                    dpaFile.delete();
 
                     break;
                 }
@@ -581,19 +579,6 @@ public class Network {
 
         Element result = new Element("Network");
         
-        /*
-        Element variablesE = new Element("Variables"); result.addContent(variablesE);
-        
-        for (Variable v:variables) {
-            Element vE = new Element("Variable"); variablesE.addContent(vE);
-            e = new Element("Name"); e.setText(v.name); vE.addContent(e);
-            Element valuesE = new Element("Values"); vE.addContent(valuesE);
-            for (String vv:v.values) {
-                e = new Element("Value"); e.setText(vv); valuesE.addContent(e);
-            }            
-        }
-        */
-
         Element structureE = new Element("Structure"); result.addContent(structureE);
 
         for (Variable v:variables) {
