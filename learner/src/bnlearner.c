@@ -66,9 +66,9 @@ void write_report_n_structure(search_stats* st, search_stats* stp,
 
   /* Structure first since it is bigger */
 
-  OPENFILE_OR_DIE(fp,structfilename,"w");
+  OPENFILE_OR_DIE(fp, structfilename, "w");
   bane_write_structure(st->beba,fp);
-  CLOSEFILE_OR_DIE(fp,structfilename);
+  CLOSEFILE_OR_DIE(fp, structfilename);
 
   /* Report second */
 
@@ -145,7 +145,7 @@ typedef void (*greedy_unchange)(bane*, arc*);
 
 void search(format *fmt, data *dt, double ess, int maxtblsize,
 	    char *reportfilename, char *structfilename,
-	    int iterations, int coolings) {
+	    int iterations, int coolings, FILE *fprogress) {
   search_stats* stg; /* global search stats */
   search_stats* stl; /* search stats for current round - local*/
   search_stats* stp; /* search stats at previous report */ 
@@ -222,7 +222,8 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 
   T = 1; // start from 1, and go up until accept ratio > 0.6
 
-  fprintf(stderr, "Calibrating...\n");
+  fprintf(fprogress, "Calibrating...\n");
+  fflush(fprogress);
 
   for(;;) {
     int n_accepts = 0;
@@ -324,7 +325,7 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 	  bane_gather_full_ss(stl->beba, dt);
 	  check = bane_get_score_param_costs(stl->beba, ess, scoreboard);
 	  if (fabsl(stl->best_score - check) > 1E-5) {
-	    fprintf(stderr, "WRONG! (%g)", stl->best_score - check);
+	    fprintf(fprogress, "WRONG! (%g)", stl->best_score - check);
 	    stl->best_score = check;
 	  }
 	}
@@ -362,7 +363,8 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
       if (acceptratio_a >= 0.60) {
 	// between 40 and 90: http://dx.doi.org/10.1016/S0045-7949(03)00214-1
 	calibrating = 0;
-	fprintf(stderr, "Learning\n");
+	fprintf(fprogress, "Learning\n");
+	fflush(fprogress);
 	T0 = T;
       } else {
 	T *= 1.1;
@@ -385,8 +387,11 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 	write_report_n_structure(stg, stp, reportfilename, structfilename,
 				 Titerations);
 
-	if (Titerations == coolings)
+	if (Titerations == coolings) {
+	  fclose(fprogress);
 	  exit(0);
+	}
+
 	max_a = 0;
 	max_b = 0;
       } else {
@@ -398,7 +403,8 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
       double p = p_b; /* p_a < p_b ? p_a : p_b; */
       double p_total = (double)Titerations/coolings + p/coolings;
 
-      fprintf(stderr, "%g\n", p_total);
+      fprintf(fprogress, "%g\n", p_total);
+      fflush(fprogress);
     }
   }
 
@@ -415,22 +421,23 @@ int main(int argc, char* argv[]){
   data* dt;
   format* fmt;
   double ess;
-  FILE* fp;
+  FILE* fprogress;
   int iterations, coolings;
 
-  if (argc != 10) {
+  if (argc != 11) {
     fprintf(stderr,
 	    "Usage: %s vdfile datafile datacount ess "
-	    "reportfile structfile iterations coolings param_cost\n", 
-	    argv[0]);
+	    "reportfile structfile iterations coolings param_cost "
+	    "progress_file\n", argv[0]);
     exit(-1);
   }
 
   fclose(stdin);
-  /* fclose(stdout); */
-  /* fclose(stderr); */
 
-  fprintf(stderr, "Initializing...\n");
+  OPENFILE_OR_DIE(fprogress, argv[10], "w");
+
+  fprintf(fprogress, "Initializing...\n");
+  fflush(fprogress);
 
   fmt = format_cread(argv[1]);
 
@@ -444,7 +451,8 @@ int main(int argc, char* argv[]){
   coolings = atoi(argv[8]);
   param_cost = atof(argv[9]);
 
-  search(fmt, dt, ess, 10000, argv[5], argv[6], iterations, coolings);
+  search(fmt, dt, ess, 10000, argv[5], argv[6], iterations, coolings,
+	 fprogress);
 
   format_free(fmt);
   data_free(dt);
