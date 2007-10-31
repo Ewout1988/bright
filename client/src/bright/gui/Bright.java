@@ -291,7 +291,15 @@ public class Bright extends JPanel {
         menuItem.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 try {
-                    getSelectedNetwork().startInferencePlayground(project);
+                    int result = JOptionPane.showConfirmDialog(Bright.this,
+                            "Warning: this will use a web service at " + Settings.getSettings().getWtsUrl() + ".\n\n" +
+                            "(If you do not wish your data to be transmitted over the Internet,\n" +
+                            "then you should install this service locally.\n\nDo you wish to continue?",
+                            "Warning", JOptionPane.YES_NO_OPTION);
+           
+                    if (result == JOptionPane.YES_OPTION) {
+                        getSelectedNetwork().startInferencePlayground(project);
+                    }
                 } catch (ApplicationException e1) {
                     JOptionPane.showMessageDialog(Bright.this,
                             e1.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
