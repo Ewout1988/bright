@@ -20,6 +20,8 @@ import org.jdom.input.SAXBuilder;
 import org.jdom.output.XMLOutputter;
 
 public class Settings {
+    private static final String VERSION = "0.1";
+
     private String learnerDir;
     private String perlPath;
     private String dotPath;
@@ -96,6 +98,7 @@ public class Settings {
     public void save() {
         Element root = new Element("BrightSettings");
         Element e;
+        e = new Element("Version"); e.setText(VERSION); root.addContent(e);
         e = new Element("LearnerDir"); e.setText(learnerDir); root.addContent(e);
         e = new Element("PerlPath"); e.setText(perlPath); root.addContent(e);
         e = new Element("DotPath"); e.setText(dotPath); root.addContent(e);

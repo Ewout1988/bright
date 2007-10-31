@@ -63,7 +63,8 @@ public class IApplet extends Applet {
    }
 
    private static Image createImage(String path) throws IOException {
-       java.net.URL imgURL = Bright.class.getResource(path);
+       path = "images/" + path;
+       java.net.URL imgURL = Bright.class.getResource("/" + path);
 
        if (imgURL != null) {
            return ImageIO.read(imgURL);

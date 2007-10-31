@@ -23,16 +23,6 @@ import org.jdom.Element;
 
 import bright.obb.IApplet;
 
-/*
- * Subclass in:
- *  - LearnedNetwork
- *  - ConsensusNetwork
- *
- * subclasses have different properties, specialized xml I/O
- *
- * make new class NetworkSet: constains list of learned networks
- */
-
 /**
  * @author kdforc0
  */
