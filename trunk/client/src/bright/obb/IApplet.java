@@ -32,7 +32,8 @@ public class IApplet extends Applet {
    BezierCanvas canv;
    
    boolean exit;
-   
+
+   /*
    public static void main(String[] args) throws IOException {
    
       // Read .pla file
@@ -61,11 +62,11 @@ public class IApplet extends Applet {
       app.launch();
       app.exit = true;
    }
+   */
 
    private static Image createImage(String path) throws IOException {
        path = "images/" + path;
        java.net.URL imgURL = Bright.class.getResource("/" + path);
-       System.err.println(imgURL);
 
        if (imgURL != null) {
            return ImageIO.read(imgURL);
@@ -95,7 +96,7 @@ public class IApplet extends Applet {
        Answun answun = new Answun(ifr, dr, sr);
     
        // read bird.gif
-       Image bird = Toolkit.getDefaultToolkit().getImage("images" + File.separator + "bird.gif");
+       Image bird = createImage("bird.gif");
     
        IApplet app = new IApplet();
        app.setup(dg, vg, ifr, bird, answun);
