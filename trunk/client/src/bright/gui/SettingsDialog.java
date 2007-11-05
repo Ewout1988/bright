@@ -52,13 +52,14 @@ public class SettingsDialog extends JDialog {
         fieldPane.setLayout(new GridLayout(0, 1));
 
         learnerDirField = addField("Directory with learner binaries: ", settings.getLearnerDir());
-        perlPathField = addField("(Optional) perl binary: ", settings.getPerlPath());
         dotPathField = addField("Path to graphviz dot binary: ", settings.getDotPath());
 
-        wtsProxyHostField = addField("HTTP Proxy host, for remote perl utilities: ", settings.getWtsProxyHost());
-        wtsProxyPortField = addField("HTTP Proxy port, for remote perl utilities: ", settings.getWtsProxyPort());
-        wtsUrlField = addField("Remote perl utilities URL: ", settings.getWtsUrl());
-        wtsPrepObbServiceNameField = addField("Remote perl utilities service: ", settings.getWtsPrepObbServiceName());
+        perlPathField = addField("Local perl binary: ", settings.getPerlPath());
+
+        wtsProxyHostField = addField("Remote perl utilities: HTTP proxy host: ", settings.getWtsProxyHost());
+        wtsProxyPortField = addField("Remote perl utilities: HTTP proxy port", settings.getWtsProxyPort());
+        wtsUrlField = addField("Remote perl utilities: URL: ", settings.getWtsUrl());
+        wtsPrepObbServiceNameField = addField("Remote perl utilities: service: ", settings.getWtsPrepObbServiceName());
 
         JPanel settingsPane = new JPanel();
         settingsPane.setBorder(BorderFactory.createEmptyBorder(5, 10,
@@ -83,7 +84,7 @@ public class SettingsDialog extends JDialog {
             public void actionPerformed(ActionEvent arg0) {
                 settings.setDotPath(dotPathField.getText());
                 settings.setLearnerDir(makeProperDir(learnerDirField.getText()));
-                settings.setPerlPath(makeProperDir(perlPathField.getText()));
+                settings.setPerlPath(perlPathField.getText());
                 settings.setWtsProxyHost(wtsProxyHostField.getText());
                 settings.setWtsProxyPort(wtsProxyPortField.getText());
                 settings.setWtsPrepObbServiceName(wtsPrepObbServiceNameField.getText());

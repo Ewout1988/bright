@@ -116,13 +116,13 @@ public class LearnedNetwork extends Network {
             if (computedE != null) {
                 try {
                     properties.computed = DateFormat.getDateTimeInstance().parse(computedE.getChild("Date").getTextTrim());
-                    properties.learnerProperties = new Learner.Properties(computedE);
-                    properties.score = Double.parseDouble(computedE.getChild("Score").getTextTrim());
-                    properties.evaluations = Long.parseLong(computedE.getChild("Evaluations").getTextTrim());
                 } catch (ParseException e) {
                     System.err.println("Error parsing date: " + computedE.getChild("Date").getTextTrim());
                     properties.computed = null;
                 }
+                properties.learnerProperties = new Learner.Properties(computedE);
+                properties.score = Double.parseDouble(computedE.getChild("Score").getTextTrim());
+                properties.evaluations = Long.parseLong(computedE.getChild("Evaluations").getTextTrim());
             }
         }
     }

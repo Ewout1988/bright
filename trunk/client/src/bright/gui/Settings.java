@@ -190,6 +190,10 @@ public class Settings {
         this.wtsPrepObbServiceName = wtsPrepObbServiceName;
     }
 
+    public boolean runPrepObbLocally() {
+        return (perlPath != null) && (perlPath.length() > 0);
+    }
+    
     public String getWtsProxyHost() {
         return wtsProxyHost;
     }

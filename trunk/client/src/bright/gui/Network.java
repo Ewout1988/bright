@@ -133,7 +133,7 @@ public class Network {
 
         File strFile;
         try {
-            strFile = File.createTempFile("bright", ".str", projectDir);
+            strFile = File.createTempFile("bright", ".str" /*, projectDir*/);
             save(strFile);
         } catch (FileNotFoundException e1) {
             throw new ApplicationException("Could not create file in: " + project.getProjectDir());
@@ -369,15 +369,91 @@ public class Network {
     }
 
     public void startInferencePlayground(Project project) throws ApplicationException {        
-        WtsClient wtsClient = new WtsClient(Settings.getSettings().getWtsUrl());
-        String serviceName = Settings.getSettings().getWtsPrepObbServiceName();
-        File strFile = null;
-        File optionsFile = null;
+        try {
+            //File projectDir = new File(project.getProjectDir());
+
+            File strFile = File.createTempFile("bright", ".str"/*, projectDir*/);
+            save(strFile);
+
+            File plaFile = File.createTempFile("bright", ".pla"/*, projectDir*/);
+            File qjtFile = File.createTempFile("bright", ".qjt"/*, projectDir*/);
+            File dpaFile = File.createTempFile("bright", ".dpa"/*, projectDir*/);
+
+            if (Settings.getSettings().runPrepObbLocally())
+                computeObbFilesLocally(project, strFile, plaFile, qjtFile, dpaFile);
+            else
+                computeObbFilesWts(project, strFile, plaFile, qjtFile, dpaFile);
+
+            File vdFile = new File(project.getVdFile());
+
+            File strFile2 = File.createTempFile("bright", ".str"/*, projectDir*/);
+            save(strFile2);
+            
+            IApplet.run(vdFile, strFile2, plaFile, qjtFile, dpaFile);
+
+            /*
+            strFile.delete();
+            plaFile.delete();
+            qjtFile.delete();
+            dpaFile.delete();
+            */
+
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+            throw new ApplicationException("Error while creating temporary files: " + e.getMessage());
+        } catch (IOException e) {
+            e.printStackTrace();
+            throw new ApplicationException("Error while writing temporary files: " + e.getMessage());
+        }
+    }
+
+    private void computeObbFilesLocally(Project project,
+            File strFile, File plaFile, File qjtFile, File dpaFile) throws ApplicationException {
+        Runtime runtime = Runtime.getRuntime();
+        Process prepobb = null;
+        File tmpFile = null;
+        File projectDir = new File(project.getProjectDir());
 
         try {
-            strFile = File.createTempFile("bright", ".str");
-            save(strFile);
-            optionsFile = File.createTempFile("bright", ".options");
+            tmpFile = File.createTempFile("brightprepobb", ""/*, projectDir*/);
+
+            String cmds[] = { Settings.getSettings().getLearnerDir() + "prepobb.sh",
+                    Settings.getSettings().getPerlPath(), Settings.getSettings().getLearnerDir(),
+                    project.getVdFile(), project.getIdtFile(), strFile.getAbsolutePath(),
+                    String.valueOf(getEss()),
+                    plaFile.getAbsolutePath(), qjtFile.getAbsolutePath(),
+                    dpaFile.getAbsolutePath(), tmpFile.getAbsolutePath()};
+
+            prepobb = runtime.exec(cmds, null, projectDir);
+            int result = prepobb.waitFor();
+
+            if (result != 0) {
+                throw new ApplicationException("Prepobb exited with error: " + result);
+            }
+        } catch (InterruptedIOException e) {
+        } catch (IOException e) {
+            throw new ApplicationException("Error: I/O Error while invoking prepobb: "
+                + e.getMessage());
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } finally {
+            if (prepobb != null)
+                prepobb.destroy();
+            if (tmpFile != null)
+                tmpFile.delete();
+        }
+        
+    }
+
+    private void computeObbFilesWts(Project project,
+            File strFile, File plaFile, File qjtFile, File dpaFile) throws ApplicationException {
+        WtsClient wtsClient = new WtsClient(Settings.getSettings().getWtsUrl());
+        String serviceName = Settings.getSettings().getWtsPrepObbServiceName();
+        File optionsFile = null;
+        File projectDir = new File(project.getProjectDir());
+
+        try {
+            optionsFile = File.createTempFile("bright", ".options"/*, projectDir*/);
             PrintStream s = new PrintStream(optionsFile);
             s.println("ESS=" + getEss());
             s.flush();
@@ -400,20 +476,9 @@ public class Network {
                 String status = wtsClient.monitorStatus(sessionTicket, serviceName);
                 
                 if (status.startsWith("ENDED")) {
-                    File plaFile = File.createTempFile("bright", ".pla");
-                    File qjtFile = File.createTempFile("bright", ".qjt");
-                    File dpaFile = File.createTempFile("bright", ".dpa");
-                    
                     wtsClient.download(sessionTicket, serviceName, "pla", plaFile);
                     wtsClient.download(sessionTicket, serviceName, "qjt", qjtFile);
                     wtsClient.download(sessionTicket, serviceName, "dpa", dpaFile);
-
-                    IApplet.run(vdFile, strFile, plaFile, qjtFile, dpaFile);
-
-                    strFile.delete();
-                    plaFile.delete();
-                    qjtFile.delete();
-                    dpaFile.delete();
 
                     break;
                 }
@@ -456,8 +521,10 @@ public class Network {
 
     public void renderToSvg(Project project, File svgFile) throws ApplicationException {
         try {
-            File dotFile = File.createTempFile("bright", ".dot");        
-            File svgTempFile = File.createTempFile("bright", ".svg");        
+            File projectDir = new File(project.getProjectDir());
+
+            File dotFile = File.createTempFile("bright", ".dot"/*, projectDir*/);
+            File svgTempFile = File.createTempFile("bright", ".svg"/*, projectDir*/);
             writeDot(dotFile.getAbsolutePath(), project);
 
             String cmds[] = { Settings.getSettings().getDotPath(), "-Tsvg", "-o",
