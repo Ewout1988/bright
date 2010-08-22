@@ -54,6 +54,7 @@ B) Unix (linux, MacOS X)
 
 Requirements:
  - GraphViz (for the 'dot' tool)
+ - perl
  - Java build environment: JDK, ant
  - GNU C build environment: autotools, gcc, make
 
@@ -85,7 +86,14 @@ To run:
 java -Xmx128M -jar client/dist/bright-xx.jar
 
 You will need to edit the Settings to change the path to your dot binary.
-If 'dot' is in your path, then you can simply put 'dot'.
+If 'dot' is in your path, then you can simply put 'dot'. When you specify a
+path for perl, then everything is run locally. If you omit the path for
+perl, then some misc calculations for the inference playground will use the
+webservics configured further down (this is for Windows which does not have
+perl by default).
+
+On MacOSX you may need to add -Dapple.awt.graphics.UseQuartz=false if you are
+not seeing text appear in the nodes.
 
 III. Usage notes
 ---------------

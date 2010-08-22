@@ -428,7 +428,10 @@ public class Network {
             int result = prepobb.waitFor();
 
             if (result != 0) {
-                throw new ApplicationException("Prepobb exited with error: " + result);
+		for (String s : cmds)
+		    System.err.print(" " + s);
+		System.err.println();
+                throw new ApplicationException(cmds[0] + " exited with error: " + result);
             }
         } catch (InterruptedIOException e) {
         } catch (IOException e) {
