@@ -1,0 +1,34 @@
+#!/bin/sh
+
+perl=$1
+bin=$2
+
+vd_file=$3
+idt_file=$4
+str_file=$5
+ess=$6
+dcount=`cat $idt_file | wc -l`
+
+pla_file=$7
+qjt_file=$8
+dpa_file=$9
+
+tmp=$10
+
+sst_file="$tmp.sst"
+tht_file="$tmp.tht"
+moral_file="$tmp.moral"
+trg_file="$tmp.trg"
+clq_file="$tmp.clq"
+jtree_file="$tmp.jtree"
+
+$perl $bin/str2pla.pl $vd_file $str_file $pla_file 
+$bin/str_n_dat2sst $str_file $vd_file $idt_file $dcount $sst_file 
+$perl $bin/sst2tht.pl $sst_file $ess $tht_file 
+$perl $bin/moralize.pl $str_file $moral_file 
+$perl $bin/triangulate.pl $vd_file $moral_file $trg_file $clq_file 
+$perl $bin/joincliques.pl $vd_file $clq_file $jtree_file 
+$perl $bin/quantify.pl $str_file $tht_file $jtree_file $clq_file $qjt_file 
+$perl $bin/sst2dpa.pl $sst_file $ess $dpa_file
+
+rm $sst_file $tht_file $moral_file $trg_file $clq_file $jtree_file

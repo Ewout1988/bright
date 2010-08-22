@@ -146,9 +146,7 @@ static void propose_step(bane *current, bane *bn, step_aux_info *sinfo,
 {
   int ch;
 
-  //bane_write_with_ss(current, "ori.ss");
   bane_assign(bn, current);
-  //bane_write_with_ss(bn, "foo.ss");
 
   for (;;) {
     /*
@@ -305,16 +303,16 @@ typedef struct mcmc_chain {
   unsigned *nb_size;
 
   /* diagnostics */
-  int mh_accepts;
-  int mh_rejects;
-  int mh_eless;
+  long long mh_accepts;
+  long long mh_rejects;
+  long long mh_eless;
 
-  int ee_accepts;
-  int ee_rejects;
-  int ee_eless;
-  int ee_na;
-  int ee_ok;
-  int ee_size;
+  long long ee_accepts;
+  long long ee_rejects;
+  long long ee_eless;
+  long long ee_na;
+  long long ee_ok;
+  long long ee_size;
 
 } mcmc_chain;
 
@@ -381,6 +379,185 @@ static int get_ring_index(double score, double *H, int K)
   return K;
 }
 
+static mcmc_chain *sample_chain(mcmc_chain *prev,
+				int k, int K,
+				double *T, double *H, double pee,
+				int iterations, int first_sample,
+				int num_samples,
+				bane *proposal, format *fmt, data *dt,
+				double ess, double param_cost, int maxtblsize,
+				score_hashtable *sht, FILE *logfp, FILE *strfp)
+{
+  double max_score = -1E500;
+
+  struct step_aux_info sinfo;
+
+  bane *empty = bane_create_from_format(fmt);
+  parent_matrix* tmp_pmx = parent_matrix_create(proposal->nodecount);
+
+  mcmc_chain *chain = chain_create(prev, T[k], K, num_samples,
+				   proposal, dt, ess, param_cost);
+
+  int sample_interval = iterations / num_samples;
+
+  int iteration, i;
+
+  MECALL(sinfo.new_nb_size, 5, unsigned);
+
+  for (iteration = 0; iteration <= iterations; ++iteration) {
+    int doEEStep = 0;
+    energy_ring *ring;
+
+    if (chain->prev) {
+      int I = get_ring_index(chain->current_score, H, K);
+      ring = chain->prev->energy_rings + I;
+      if (ring->num_samples) {
+	++chain->ee_ok;
+	chain->ee_size += ring->num_samples;
+	doEEStep = drand48() < pee;
+      } else
+	++chain->ee_na;
+    }
+
+    if (doEEStep) {
+      int accept;
+      int sampleI = rand() % ring->num_samples;
+      double new_score = ring->sample_score[sampleI];
+
+      double d
+	= calc_m(chain->current_score, new_score, T[k], H[k])
+	/ calc_m(chain->current_score, new_score, T[k+1], H[k+1]);
+
+      accept = d >= 1;
+
+      if (accept) {
+	++chain->ee_eless;
+      } else
+	if (drand48() < d) {
+	  accept = 1;
+	  ++chain->ee_accepts;
+	} else {
+	  ++chain->ee_rejects;
+	}
+
+      if (accept) {
+	memcpy(tmp_pmx->mx, ring->sample_mx + sampleI * ring->struct_size, 
+	       sizeof(unsigned) * ring->struct_size);
+	bane_assign(chain->current, empty);
+	bane_assign_from_pmx(chain->current, tmp_pmx);
+	bane_gather_full_ss(chain->current, dt);
+	chain->current_score
+	  = bane_get_score_param_costs(chain->current, ess,
+				       chain->scoreboard);
+	bane_calc_neighbourhood_sizes(chain->current, chain->nb_size);
+      }
+    } else {
+      int accept;
+      double new_score;
+      double mh;
+
+      propose_step(chain->current, proposal, &sinfo, chain->nb_size,
+		   maxtblsize);
+
+      new_score = calc_score(proposal, dt, chain->current_score, sht,
+			     &sinfo, chain->scoreboard, ess, param_cost);
+
+      mh = calc_mh(proposal, chain->current_score, new_score, &sinfo,
+		   chain->nb_size, T[k], H[k]);
+    
+      accept = mh >= 1;
+
+      if (accept) {
+	++chain->mh_eless;
+      } else
+	if (drand48() < mh) {
+	  accept = 1;
+	  ++chain->mh_accepts;
+	} else {
+	  ++chain->mh_rejects;
+	}
+
+      if (accept) {
+	bane *sw;
+	unsigned *nbsw;
+
+	complete_step(proposal, dt, chain->current_score,
+		      chain->scoreboard, &sinfo, ess, param_cost);
+
+	/* swap current - proposal */
+	sw = chain->current;
+	chain->current = proposal;
+	proposal = sw;
+
+	nbsw = chain->nb_size;
+	chain->nb_size = sinfo.new_nb_size;
+	sinfo.new_nb_size = nbsw;
+
+	chain->current_score = new_score;
+
+	if (new_score > max_score) {
+	  max_score = new_score;
+	  if (max_score > -H[0]) {
+	    fprintf(stderr, "max_score %g > -H0 %g", max_score, -H[0]);
+	    exit(1);
+	  }
+	}
+      }
+    }
+
+    if (iteration >= first_sample && (iteration % sample_interval == 0)) {
+      double mh_ar, ee_ar, ee_av, ee_si;
+
+      if (chain->energy_rings) {
+	int I = get_ring_index(chain->current_score, H, K);
+	ring = chain->energy_rings + I;
+
+	ring->sample_score[ring->num_samples] = chain->current_score;
+	memcpy(ring->sample_mx + ring->num_samples * ring->struct_size,
+	       chain->current->pmx->mx,
+	       sizeof(unsigned) * ring->struct_size);
+
+	++ring->num_samples;
+      }
+
+      mh_ar = (double)(chain->mh_accepts + chain->mh_eless)
+	/(chain->mh_accepts + chain->mh_eless + chain->mh_rejects);
+
+      ee_ar = (double)(chain->ee_accepts + chain->ee_eless)
+	/(chain->ee_accepts + chain->ee_eless + chain->ee_rejects);
+
+      ee_av = (double)(chain->ee_ok) / (chain->ee_ok + chain->ee_na);
+
+      ee_si = (double)(chain->ee_size) / chain->ee_ok;
+
+      fprintf(stderr, "[%d, %d, %g]: %g (mh: %g",
+	      iteration, k, H[k], chain->current_score,
+	      mh_ar);
+      if (chain->ee_accepts + chain->ee_eless + chain->ee_rejects)
+	fprintf(stderr, ", ee: %g [av: %g : %g]", ee_ar, ee_av, ee_si);
+      fprintf(stderr, ")\n");
+
+      if (logfp) {
+	fprintf(logfp, "%d\t%g", iteration, chain->current_score);
+	for (i = 0; i < chain->current->nodecount; ++i) {
+	  node* nodi = chain->current->nodes + i;
+	  fprintf(logfp, "\t%d\t%d", nodi->childcount, nodi->parentcount);
+	}
+	fprintf(logfp, "\n");
+      }
+
+      if (strfp) {
+	fprintf(strfp, "state %d\n", iteration);
+	bane_write_structure(chain->current, strfp);
+      }
+    }
+  }
+
+  parent_matrix_free(tmp_pmx);
+
+  return chain;
+}
+
 static void init_ladder(double *T, double *H, int K,
 			double H0, double Hc, double Tc, FILE *statfp)
 {
@@ -415,12 +592,8 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 {
   score_hashtable* sht;
 
-  parent_matrix* tmp_pmx;
-
-  double max_score = -1E500;
   bane *proposal;
   bane *empty;
-  struct step_aux_info sinfo;
   int k, i;
 
   double *T;
@@ -435,7 +608,6 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
 
   char buf[strlen(prefix) + 15];
 
-  MECALL(sinfo.new_nb_size, 5, unsigned);
   MECALL(T, K+1, double);
   MECALL(H, K+1, double);
 
@@ -446,31 +618,24 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
   
   bane_gather_full_ss(proposal, dt);
 
-  tmp_pmx = parent_matrix_create(proposal->nodecount);
-
   sht = create_hashtable(500000, proposal);
 
   fflush(statfp);
 
   for (k = K; k >= 0; --k) {
     double t;
+
     if (k == K)
       t = 1;
     else
       t = (double)k/K * 0.5;
 
-    int last_iteration
+    int iterations
       = exp(log(chainK_length)
 	    + t * (log(chain0_length) - log(chainK_length)));
-    int iteration;
 
-    double thispee = pee * chain0_length / last_iteration;
-
-    int first_sample = k == 0 ? 0 : last_iteration*B;
-    int sample_interval = last_iteration / num_samples;
-
-    mcmc_chain *next = chain_create(chain, T[k], K, num_samples,
-				    proposal, dt, ess, param_cost);
+    double thispee = pee * chain0_length / iterations;
+    int first_sample = k == 0 ? 0 : iterations*B;
 
     MECALL(strfilename, strlen(prefix) + 15, char);
     if (k == 0)
@@ -495,162 +660,20 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
     }
     fprintf(logfp, "\n");
 
+    chain = sample_chain(chain, k, K, T, H, thispee,
+			 iterations, first_sample, num_samples,
+			 proposal, fmt, dt, ess, param_cost, maxtblsize,
+			 sht, logfp, strfp);
+
     if (chainK == NULL)
-      chainK = next;
-
-    chain = next;
-
-    for (iteration = 0; iteration <= last_iteration; ++iteration) {
-      int doEEStep = 0;
-      energy_ring *ring;
-
-      if (k != K) {
-	int I = get_ring_index(chain->current_score, H, K);
-	ring = chain->prev->energy_rings + I;
-	if (ring->num_samples) {
-	  ++chain->ee_ok;
-	  chain->ee_size += ring->num_samples;
-	  doEEStep = drand48() < thispee;
-	} else
-	  ++chain->ee_na;
-      }
-
-      if (doEEStep) {
-	int accept;
-	int sampleI = rand() % ring->num_samples;
-	double new_score = ring->sample_score[sampleI];
-
-	double d
-	  = calc_m(chain->current_score, new_score, T[k], H[k])
-	  / calc_m(chain->current_score, new_score, T[k+1], H[k+1]);
-
-	accept = d >= 1;
-
-	if (accept) {
-	  ++chain->ee_eless;
-	} else
-	  if (drand48() < d) {
-	    accept = 1;
-	    ++chain->ee_accepts;
-	  } else {
-	    ++chain->ee_rejects;
-	  }
-
-	if (accept) {
-	  memcpy(tmp_pmx->mx, ring->sample_mx + sampleI * ring->struct_size, 
-		 sizeof(unsigned) * ring->struct_size);
-	  bane_assign(chain->current, empty);
-	  bane_assign_from_pmx(chain->current, tmp_pmx);
-	  bane_gather_full_ss(chain->current, dt);
-	  chain->current_score
-	    = bane_get_score_param_costs(chain->current, ess,
-					 chain->scoreboard);
-	  bane_calc_neighbourhood_sizes(chain->current, chain->nb_size);
-	}
-      } else {
-	int accept;
-	double new_score;
-	double mh;
-
-	propose_step(chain->current, proposal, &sinfo, chain->nb_size,
-		     maxtblsize);
-
-	new_score = calc_score(proposal, dt, chain->current_score, sht,
-			       &sinfo, chain->scoreboard, ess, param_cost);
-
-	mh = calc_mh(proposal, chain->current_score, new_score, &sinfo,
-		     chain->nb_size, T[k], H[k]);
-    
-	accept = mh >= 1;
-
-	if (accept) {
-	  ++chain->mh_eless;
-	} else
-	  if (drand48() < mh) {
-	    accept = 1;
-	    ++chain->mh_accepts;
-	  } else {
-	    ++chain->mh_rejects;
-	  }
-
-	if (accept) {
-	  bane *sw;
-	  unsigned *nbsw;
-
-	  complete_step(proposal, dt, chain->current_score,
-			chain->scoreboard, &sinfo, ess, param_cost);
-
-	  /* swap current - proposal */
-	  sw = chain->current;
-	  chain->current = proposal;
-	  proposal = sw;
-
-	  nbsw = chain->nb_size;
-	  chain->nb_size = sinfo.new_nb_size;
-	  sinfo.new_nb_size = nbsw;
-
-	  chain->current_score = new_score;
-
-	  if (new_score > max_score) {
-	    max_score = new_score;
-	    if (max_score > -H0) {
-	      fprintf(stderr, "max_score %g > -H0 %g", max_score, -H0);
-	      exit(1);
-	    }
-	  }
-	}
-      }
-
-      if (iteration >= first_sample && (iteration % sample_interval == 0)) {
-	double mh_ar, ee_ar, ee_av, ee_si;
-
-	if (chain->energy_rings) {
-	  int I = get_ring_index(chain->current_score, H, K);
-	  ring = chain->energy_rings + I;
-
-	  ring->sample_score[ring->num_samples] = chain->current_score;
-	  memcpy(ring->sample_mx + ring->num_samples * ring->struct_size,
-		 chain->current->pmx->mx,
-		 sizeof(unsigned) * ring->struct_size);
-
-	  ++ring->num_samples;
-	}
-
-	mh_ar = (double)(chain->mh_accepts + chain->mh_eless)
-	  /(chain->mh_accepts + chain->mh_eless + chain->mh_rejects);
-
-	ee_ar = (double)(chain->ee_accepts + chain->ee_eless)
-	  /(chain->ee_accepts + chain->ee_eless + chain->ee_rejects);
-
-	ee_av = (double)(chain->ee_ok) / (chain->ee_ok + chain->ee_na);
-
-	ee_si = (double)(chain->ee_size) / chain->ee_ok;
-
-	fprintf(stderr, "[%d, %d, %g]: %g (mh: %g",
-		iteration, k, H[k], chain->current_score,
-		mh_ar);
-	if (chain->ee_accepts + chain->ee_eless + chain->ee_rejects)
-	  fprintf(stderr, ", ee: %g [av: %g : %g]", ee_ar, ee_av, ee_si);
-	fprintf(stderr, ")\n");
-
-	fprintf(logfp, "%d\t%g", iteration, chain->current_score);
-	for (i = 0; i < chain->current->nodecount; ++i) {
-	  node* nodi = chain->current->nodes + i;
-	  fprintf(logfp, "\t%d\t%d", nodi->childcount, nodi->parentcount);
-	}
-	fprintf(logfp, "\n");
-
-	fprintf(strfp, "state %d\n", iteration);
-	bane_write_structure(chain->current, strfp);
-      }
-    }
+      chainK = chain;
 
     if (chain->prev)
       chain_free_samples(chain->prev, K);
 
     CLOSEFILE_OR_DIE(logfp, logfilename);
     CLOSEFILE_OR_DIE(strfp, strfilename);
- }
+  }
 
   {
     int i, k;
@@ -711,6 +734,74 @@ static void sample(format *fmt, data *dt, double ess, int maxtblsize,
   score_hashtable_free(sht);
 }
 
+static void calibrate(format *fmt, data *dt, double ess, int maxtblsize,
+		      double param_cost, double H0)
+{
+  score_hashtable* sht;
+
+  bane *proposal;
+  bane *empty;
+  int k, i;
+
+  double *T;
+  double *H;
+
+  mcmc_chain *chain = NULL;
+
+  proposal = bane_create_from_format(fmt);
+  empty = bane_create_from_format(fmt);
+  
+  bane_gather_full_ss(proposal, dt);
+
+  sht = create_hashtable(500000, proposal);
+
+  /* (1) Chose Tk
+   *
+   * Look for a value high enough so that mh_accept is >= 0.75
+   */
+  MECALL(T, 2, double);
+  MECALL(H, 2, double);
+
+  T[0] = 1;
+  T[1] = 1.5;
+  H[0] = H0;
+  H[1] = H0*1.00001; /* low enough to not interfere */
+
+  for (;;) {
+    fprintf(stderr, "Trying: T=%g\n", T[1]);
+    chain = sample_chain(0, 1, 1, T, H, 0.001,
+			 10000, 0, 10, proposal, fmt, dt, ess,
+			 maxtblsize, param_cost, sht, 0, 0);
+
+    double mh_ar;
+
+    mh_ar = (double)(chain->mh_accepts + chain->mh_eless)
+      /(chain->mh_accepts + chain->mh_eless + chain->mh_rejects);
+
+    if (mh_ar > 0.75)
+      break;
+
+    T[1] *= 1.5;
+  }
+
+  fprintf(stderr, "Tk=%g\n", T[1]);
+
+  int r;
+  double Hk = 1E200;
+  for (r = 0; r < 2; ++r) {
+    energy_ring *er = chain->energy_rings + r;
+
+    for (i = 0; i < er->num_samples; ++i) {
+      if (-er->sample_score[i] < Hk)
+	Hk = -er->sample_score[i];
+    }
+  }
+
+  fprintf(stderr, "Hk=%g\n", Hk);
+
+  score_hashtable_free(sht);
+}
+
 int main(int argc, char* argv[]){
   int n;
   data* dt;
@@ -725,9 +816,27 @@ int main(int argc, char* argv[]){
   FILE *statfp;
   int i;
 
+  TRACK_OFFSPRING_COUNT = 1;
+
   srand48(getpid());
 
-  if (argc != 16) {
+  if (argc == 7) {
+    fmt = format_cread(argv[1]);
+
+    n = atoi(argv[3]);
+    dt = data_create(n,fmt->dim);
+    data_read(argv[2],dt);
+
+    ess = atof(argv[4]);
+    param_cost = atof(argv[5]);
+
+    H0 = atof(argv[6]);
+
+    calibrate(fmt, dt, ess, param_cost, 10000, H0); 
+
+    exit(0);
+
+  } else if (argc != 16) {
     fprintf(stderr,
 	    "Usage: %s vdfile datafile datacount ess "
 	    "param_cost chain0_length chainK_length num_samples K pburnin "
@@ -789,8 +898,6 @@ int main(int argc, char* argv[]){
 	  "            pee: %g\n\n",
 	  chain0_length, chainK_length, num_samples, K, B,
 	  H0, Hc, Tc, pee);
-
-  TRACK_OFFSPRING_COUNT = 1;
 
   sample(fmt, dt, ess, 10000, chain0_length, chainK_length, num_samples,
 	 K, B, H0, Hc, Tc, pee, argv[15], statfp);
