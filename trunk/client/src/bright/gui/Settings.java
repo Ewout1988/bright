@@ -49,7 +49,7 @@ public class Settings {
         wtsProxyHost = "";
         wtsProxyPort = "";
         wtsPrepObbServiceName = "bright-prepobb";
-        wtsUrl = "http://virolab.med.kuleuven.be/wts/services/";
+        wtsUrl = "http://regadb.med.kuleuven.be/wts/services/";
 
         if (home != null) {
             learnerDir = home.getAbsolutePath() + File.separator + learnerDir;

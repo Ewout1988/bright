@@ -13,7 +13,7 @@ pla_file=$7
 qjt_file=$8
 dpa_file=$9
 
-tmp=$10
+tmp=`dirname $pla_file`/tmp
 
 sst_file="$tmp.sst"
 tht_file="$tmp.tht"
