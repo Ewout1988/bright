@@ -19,6 +19,8 @@ bin/perl/joincliques.pl
 bin/perl/quantify.pl
 bin/python/Makefile
 bin/python/hugo.py
+bin/sh/Makefile
+bin/sh/prepobb.sh
 src/Makefile 
 src/common/Makefile 
 )
