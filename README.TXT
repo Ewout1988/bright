@@ -65,6 +65,8 @@ B-Right uses remote web services for pre-processing that is needed for the
 inference tool. In the GUI, you may want to edit the settings to configure
 proxy settings, if necessary.
 
+The GraphViz program is included in the binary distribution.
+
 C. Local preprocessing
 ----------------------
 By default B-Right uses remote web services for pre-processing that is needed 
