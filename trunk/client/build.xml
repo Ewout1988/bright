@@ -5,7 +5,7 @@
 	<property name="build" location="build" />
 	<property name="dist" location="dist" />
 	<property name="proj.name" value="bright" />
-	<property name="proj.version" value="0.1" />
+	<property name="proj.version" value="0.3" />
 
 	<path id="project.classpath">
 	  <fileset dir="lib">
