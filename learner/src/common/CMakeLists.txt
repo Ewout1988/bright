@@ -17,7 +17,7 @@ INCLUDE_DIRECTORIES(
  common
 )
 
-ADD_LIBRARY(bayway SHARED ${COMMON})
+ADD_LIBRARY(bayway ${COMMON})
 
 INSTALL_FILES(/include/common .*\\.h)
 INSTALL (TARGETS bayway DESTINATION lib)
