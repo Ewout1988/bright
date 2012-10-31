@@ -36,7 +36,7 @@ cd ..
 # build the learner
 mkdir build
 cd build
-cmake -DCMAKE_INSTALL_PREFIX=$PWD/../../client/dist/
+cmake -DCMAKE_INSTALL_PREFIX=`pwd`/../../client/dist/ ../
 make
 make install
 cd ..
