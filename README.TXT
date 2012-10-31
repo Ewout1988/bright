@@ -40,7 +40,7 @@ cd build
 cmake -DCMAKE_INSTALL_PREFIX=`pwd`/../../client/dist/ ../
 make
 make install
-cd ..
+cd ../..
 
 To run:
 java -jar client/dist/bright-0.3.jar
