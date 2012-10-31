@@ -34,6 +34,7 @@ ant
 cd ..
 
 # build the learner
+cd learner
 mkdir build
 cd build
 cmake -DCMAKE_INSTALL_PREFIX=`pwd`/../../client/dist/ ../
