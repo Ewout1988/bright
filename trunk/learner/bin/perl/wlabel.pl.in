@@ -1,0 +1,32 @@
+#!/usr/bin/perl -w
+
+use Getopt::Std;
+
+if(@ARGV != 3) {
+	print STDERR "Usage: $0 arcwfile vdfile arcwlfile\n";
+	exit;
+}
+
+my %highlight;
+
+open(V,"<$ARGV[1]") or die "iik $ARGV[1] $!\n";
+while(<V>){
+  my ($varname, @valnames) = split(/\t/);
+  push @varnames, $varname;	
+} 
+close(V);
+
+# READ ARCWEIGHTS
+
+open(H,">$ARGV[2]");
+open(G,"<$ARGV[0]") or die "iik $ARGV[0] $!\n"; 
+my $line = <G>;
+while($line) {
+    my ($p, $i, $w) = split(/\s+/, $line);
+    my $pl = $varnames[$p];
+    my $il = $varnames[$i];
+    print H "$pl $il $w\n";
+    $line = <G>;
+}
+close(G);
+close(H);
