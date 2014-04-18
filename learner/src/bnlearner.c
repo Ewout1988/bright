@@ -388,6 +388,8 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 				 Titerations);
 
 	if (Titerations == coolings) {
+	  fprintf(fprogress, "Ready\n");
+	  fflush(fprogress);
 	  fclose(fprogress);
 	  exit(0);
 	}

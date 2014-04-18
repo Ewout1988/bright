@@ -48,6 +48,11 @@ INSTALL (
   DESTINATION bin/perl 
   RENAME triangulate.pl
 )
+INSTALL (
+  FILES bin/perl/wlabel.pl.in
+  DESTINATION bin/perl
+  RENAME wlabel.pl
+)
 
 INSTALL (
   FILES bin/sh/prepobb.sh.in
