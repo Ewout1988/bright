@@ -2,6 +2,7 @@
 #include <math.h>
 #include <errno.h>
 #include <unistd.h>
+#include <time.h>
 #include "err.h"
 #include "format.h"
 #include "data.h"
@@ -143,6 +144,19 @@ bane *open_or_create(char *structfilename, format *fmt, data *dt, double ess)
 typedef int (*greedy_change)(bane*, arc*, int);
 typedef void (*greedy_unchange)(bane*, arc*);
 
+void put_time(FILE *f)
+{
+  time_t timer;
+  char buffer[26];
+  struct tm* tm_info;
+
+  time(&timer);
+  tm_info = localtime(&timer);
+
+  strftime(buffer, 26, "%Y-%m-%d %H:%M:%S", tm_info);
+  fprintf (f, "%s", buffer);
+}
+
 void search(format *fmt, data *dt, double ess, int maxtblsize,
 	    char *reportfilename, char *structfilename,
 	    int iterations, int coolings, FILE *fprogress) {
@@ -222,7 +236,9 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 
   T = 1; // start from 1, and go up until accept ratio > 0.6
 
-  fprintf(fprogress, "Calibrating...\n");
+  fprintf(fprogress, "Calibrating... (time=");
+  put_time(fprogress);
+  fprintf(fprogress, ")\n");
   fflush(fprogress);
 
   for(;;) {
@@ -388,8 +404,11 @@ void search(format *fmt, data *dt, double ess, int maxtblsize,
 				 Titerations);
 
 	if (Titerations == coolings) {
-	  fprintf(fprogress, "Ready\n");
-	  fflush(fprogress);
+	  fprintf(fprogress, "Ready (time=");
+	  put_time(fprogress);
+          fprintf(fprogress, ")\n");
+
+          fflush(fprogress);
 	  fclose(fprogress);
 	  exit(0);
 	}
