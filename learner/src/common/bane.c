@@ -217,6 +217,7 @@ void bane_gather_full_ss_in_order_from_file(bane* bn, char* filename){
       ++ SS(nodi,pci,dr[i]);
       ++ nodi->ssp[pci];
       ++ nodi->N;
+      ++ nodi->dtN;
     }
   }
 	
