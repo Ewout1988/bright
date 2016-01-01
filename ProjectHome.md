@@ -1,0 +1,1 @@
+B-Right builds further on the Bayesian Network learning engine that is used at B-Course (http://b-course.cs.helsinki.fi/obc/). Similar in spirit to B-Course, it is aimed at providing researchers with a solid, fast and easy-to-use Bayesian Network learning program, with advanced interpretation tools including an exact inference engine.
